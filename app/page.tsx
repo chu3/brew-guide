@@ -6,6 +6,7 @@ import { brewingMethods as commonMethods, equipmentList, brandCoffees, APP_VERSI
 import { loadCustomMethods, saveCustomMethod, deleteCustomMethod, copyMethodToClipboard } from '@/lib/customMethods'
 import CustomMethodFormModal from '@/components/CustomMethodFormModal'
 import NavigationBar from '@/components/NavigationBar'
+import BottomNavBar from '@/components/BottomNavBar'
 import Settings, { SettingsOptions, defaultSettings } from '@/components/Settings'
 import { initCapacitor } from './capacitor'
 import { Storage } from '@/lib/storage'
@@ -27,7 +28,7 @@ const PourVisualizer = dynamic(() => import('@/components/PourVisualizer'), {
 type TabType = '器具' | '方案' | '注水' | '记录';
 
 // 添加新的主导航类型
-type MainTabType = '冲煮' | '咖啡豆' | '笔记';
+type MainTabType = '首页' | '咖啡豆' | '冲煮' | '笔记' | '我的';
 // 修改冲煮步骤类型
 type BrewingStep = 'coffeeBean' | 'equipment' | 'method' | 'brewing' | 'notes';
 
@@ -452,8 +453,16 @@ const PourOverRecipes = () => {
         } else if (activeMainTab === '笔记') {
             // 切换到笔记标签时，保留当前的冲煮设置，但不显示参数信息条
             // 不需要额外操作，因为参数信息条已经通过条件渲染控制只在冲煮标签显示
+            setShowHistory(true);
+        } else if (activeMainTab === '首页') {
+            // 切换到首页标签时的逻辑
+            setShowHistory(false);
+        } else if (activeMainTab === '我的') {
+            // 切换到我的标签时的逻辑
+            setShowHistory(false);
         } else if (activeMainTab === '冲煮') {
             // 切换回冲煮标签时，根据当前步骤恢复显示参数信息条和步骤指示器
+            setShowHistory(false);
             // 如果当前步骤是咖啡豆，确保参数信息条为空
             if (activeBrewingStep === 'coffeeBean') {
                 setParameterInfo({
@@ -620,7 +629,7 @@ const PourOverRecipes = () => {
     }, []);
 
     const handleEquipmentSelect = useCallback((equipmentName: string) => {
-        // 如果当前在笔记标签，先切换回冲煮标签
+        // 如果当前不在冲煮标签，先切换回冲煮标签
         if (activeMainTab !== '冲煮') {
             setActiveMainTab('冲煮');
             setShowHistory(false);
@@ -711,7 +720,7 @@ const PourOverRecipes = () => {
 
     const handleMethodSelect = useCallback(
         (methodIndex: number) => {
-            // 如果当前在笔记标签，先切换回冲煮标签
+            // 如果当前不在冲煮标签，先切换回冲煮标签
             if (activeMainTab !== '冲煮') {
                 setActiveMainTab('冲煮');
                 setShowHistory(false);
@@ -982,7 +991,7 @@ const PourOverRecipes = () => {
 
     // 处理冲煮步骤点击
     const handleBrewingStepClick = (step: BrewingStep) => {
-        // 如果当前在笔记标签，先切换回冲煮标签
+        // 如果当前不在冲煮标签，先切换回冲煮标签
         if (activeMainTab !== '冲煮') {
             setActiveMainTab('冲煮');
             setShowHistory(false);
@@ -1237,7 +1246,6 @@ const PourOverRecipes = () => {
             {/* 使用 NavigationBar 组件替换原有的导航栏 */}
             <NavigationBar
                 activeMainTab={activeMainTab}
-                setActiveMainTab={setActiveMainTab}
                 activeBrewingStep={activeBrewingStep}
                 setActiveBrewingStep={handleBrewingStepClick}
                 parameterInfo={parameterInfo}
@@ -1249,15 +1257,28 @@ const PourOverRecipes = () => {
                 selectedEquipment={selectedEquipment}
                 selectedMethod={currentBrewingMethod}
                 handleParamChange={handleParamChange}
-                setShowHistory={setShowHistory}
                 setActiveTab={setActiveTab}
                 onTitleDoubleClick={handleTitleDoubleClick}
             />
 
             {/* 内容区域 - 简化内边距和间距 */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto pb-16">
                 <AnimatePresence mode="wait">
-                    {activeMainTab === '笔记' ? (
+                    {activeMainTab === '首页' ? (
+                        <motion.div
+                            key="home"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.26 }}
+                            className="h-full px-6 py-4"
+                        >
+                            {/* 首页内容 */}
+                            <div className="flex h-32 items-center justify-center text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                [ 首页功能即将推出 ]
+                            </div>
+                        </motion.div>
+                    ) : activeMainTab === '笔记' ? (
                         <motion.div
                             key="history"
                             initial={{ opacity: 0 }}
@@ -1286,6 +1307,20 @@ const PourOverRecipes = () => {
                             {/* 咖啡豆管理界面将在这里实现 */}
                             <div className="flex h-32 items-center justify-center text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
                                 [ 咖啡豆管理功能即将推出 ]
+                            </div>
+                        </motion.div>
+                    ) : activeMainTab === '我的' ? (
+                        <motion.div
+                            key="profile"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.26 }}
+                            className="h-full px-6 py-4"
+                        >
+                            {/* 我的页面内容 */}
+                            <div className="flex h-32 items-center justify-center text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                [ 个人中心功能即将推出 ]
                             </div>
                         </motion.div>
                     ) : activeBrewingStep === 'coffeeBean' ? (
@@ -1514,6 +1549,12 @@ const PourOverRecipes = () => {
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* 底部导航栏 */}
+            <BottomNavBar
+                activeMainTab={activeMainTab}
+                setActiveMainTab={setActiveMainTab}
+            />
 
             {/* 底部工具栏 - 根据当前状态显示不同内容 */}
             <AnimatePresence>

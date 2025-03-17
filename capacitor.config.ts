@@ -20,6 +20,10 @@ const config: CapacitorConfig = {
 			splashFullScreen: true,
 			splashImmersive: true,
 		},
+		Haptics: {
+			// Haptics 插件配置
+			// 默认配置即可，无需特殊设置
+		},
 	},
 };
 

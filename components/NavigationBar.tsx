@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { APP_VERSION, equipmentList } from '@/lib/config'
+import { equipmentList } from '@/lib/config'
 
 // 定义一个隐藏滚动条的样式
 const noScrollbarStyle = `
@@ -18,7 +18,7 @@ const noScrollbarStyle = `
 type TabType = '器具' | '方案' | '注水' | '记录';
 
 // 添加新的主导航类型
-type MainTabType = '冲煮' | '咖啡豆' | '笔记';
+type MainTabType = '首页' | '咖啡豆' | '冲煮' | '笔记' | '我的';
 // 修改冲煮步骤类型
 type BrewingStep = 'coffeeBean' | 'equipment' | 'method' | 'brewing' | 'notes';
 
@@ -209,7 +209,6 @@ const EditableParameter = ({
 
 interface NavigationBarProps {
     activeMainTab: MainTabType;
-    setActiveMainTab: (tab: MainTabType) => void;
     activeBrewingStep: BrewingStep;
     setActiveBrewingStep: (step: BrewingStep) => void;
     parameterInfo: ParameterInfo;
@@ -236,14 +235,12 @@ interface NavigationBarProps {
         };
     } | null;
     handleParamChange: (type: keyof EditableParams, value: string) => void;
-    setShowHistory: (show: boolean) => void;
     setActiveTab: (tab: TabType) => void;
     onTitleDoubleClick: () => void; // 添加双击标题的回调函数
 }
 
 const NavigationBar: React.FC<NavigationBarProps> = ({
     activeMainTab,
-    setActiveMainTab,
     activeBrewingStep,
     setActiveBrewingStep,
     parameterInfo,
@@ -255,7 +252,6 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
     selectedEquipment,
     selectedMethod,
     handleParamChange,
-    setShowHistory,
     setActiveTab,
     onTitleDoubleClick // 接收双击标题的回调函数
 }) => {
@@ -309,102 +305,24 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
 
     return (
         <div
-            className="sticky top-0 pt-safe bg-neutral-50/95 dark:bg-neutral-900/95 border-b border-neutral-200 dark:border-neutral-800"
+            className="sticky top-0 pt-safe bg-neutral-50/95 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800"
         >
             {/* 添加隐藏滚动条的样式 */}
             <style jsx global>{noScrollbarStyle}</style>
 
-            <div className={`transition-all duration-300 ease-in-out ${shouldHideHeader ? 'max-h-0 opacity-0 overflow-hidden' : 'max-h-20 opacity-100'}`}>
-                <div className="flex items-center justify-between px-6 px-safe py-4">
+            <div className={` transition-all duration-300 ease-in-out ${shouldHideHeader ? 'max-h-0 opacity-0 overflow-hidden' : 'max-h-20 opacity-100'}`}>
+                <div className="flex items-center justify-center px-6 px-safe py-4">
                     {/* 左侧标题 - 添加双击事件 */}
                     <h1
-                        className="text-base font-light tracking-wide cursor-pointer"
+                        className="font-sans text-base font-light tracking-wide cursor-pointer"
                         onClick={handleTitleClick}
                     >
-                        手冲咖啡
-                        <span className="ml-1 text-[8px] text-neutral-400 dark:text-neutral-600">v{APP_VERSION}</span>
+                        <span className="inline-block">Coffee</span>
+                        <span className="inline-block mx-2 h-px w-6 bg-neutral-300 dark:bg-neutral-50 align-middle"></span>
+                        <span className="inline-block">Brew Guide</span>
                     </h1>
 
-                    {/* 右侧主导航 */}
-                    <div className="flex items-center space-x-6">
-                        <TabButton
-                            tab="冲煮"
-                            isActive={activeMainTab === '冲煮'}
-                            onClick={() => {
-                                // 如果已经在冲煮标签，不做任何操作
-                                if (activeMainTab === '冲煮') return;
-
-                                setActiveMainTab('冲煮');
-                                // 从笔记切换回冲煮时，确保关闭历史记录显示
-                                if (activeMainTab === '笔记') {
-                                    setShowHistory(false);
-                                }
-
-                                // 根据当前步骤恢复显示参数信息条和步骤指示器
-                                if (activeBrewingStep === 'coffeeBean') {
-                                    setParameterInfo({
-                                        equipment: null,
-                                        method: null,
-                                        params: null,
-                                    });
-                                } else if (activeBrewingStep === 'equipment') {
-                                    if (selectedEquipment) {
-                                        const equipmentName = equipmentList.find(e => e.id === selectedEquipment)?.name || selectedEquipment;
-                                        setParameterInfo({
-                                            equipment: equipmentName,
-                                            method: null,
-                                            params: null,
-                                        });
-                                    } else {
-                                        setParameterInfo({
-                                            equipment: null,
-                                            method: null,
-                                            params: null,
-                                        });
-                                    }
-                                } else if (activeBrewingStep === 'method') {
-                                    if (selectedEquipment) {
-                                        const equipmentName = equipmentList.find(e => e.id === selectedEquipment)?.name || selectedEquipment;
-                                        setParameterInfo({
-                                            equipment: equipmentName,
-                                            method: selectedMethod?.name || null,
-                                            params: selectedMethod?.params ? {
-                                                coffee: selectedMethod.params.coffee,
-                                                water: selectedMethod.params.water,
-                                                ratio: selectedMethod.params.ratio,
-                                                grindSize: selectedMethod.params.grindSize,
-                                                temp: selectedMethod.params.temp,
-                                            } : null,
-                                        });
-                                    }
-                                }
-                            }}
-                            className="text-[10px] sm:text-xs"
-                        />
-                        <TabButton
-                            tab="咖啡豆"
-                            isActive={activeMainTab === '咖啡豆'}
-                            onClick={() => {
-                                // 如果已经在咖啡豆标签，不做任何操作
-                                if (activeMainTab === '咖啡豆') return;
-
-                                setActiveMainTab('咖啡豆');
-                            }}
-                            className="text-[10px] sm:text-xs"
-                        />
-                        <TabButton
-                            tab="笔记"
-                            isActive={activeMainTab === '笔记'}
-                            onClick={() => {
-                                // 如果已经在笔记标签，不做任何操作
-                                if (activeMainTab === '笔记') return;
-
-                                setActiveMainTab('笔记');
-                                setShowHistory(true);
-                            }}
-                            className="text-[10px] sm:text-xs"
-                        />
-                    </div>
+                    {/* 移除右侧主导航 */}
                 </div>
             </div>
 

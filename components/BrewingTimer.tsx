@@ -6,6 +6,8 @@ import BrewingNoteForm from '@/components/BrewingNoteForm'
 import type { BrewingNoteData } from '@/app/page'
 import type { Method } from '@/lib/config'
 import type { SettingsOptions } from '@/components/Settings'
+import { KeepAwake } from '@capacitor-community/keep-awake'
+import { Capacitor } from '@capacitor/core'
 
 // Helper function to format time
 const formatTime = (seconds: number, compact: boolean = false) => {
@@ -68,6 +70,8 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
     const audioLoaded = useRef<boolean>(false)
     const methodStagesRef = useRef(currentBrewingMethod?.params.stages || [])
     const [showNoteForm, setShowNoteForm] = useState(false)
+    const isCompletingRef = useRef(false)
+    const keepAwakeAvailable = useRef<boolean>(true)
 
     useEffect(() => {
         const initAudioSystem = () => {
@@ -228,22 +232,83 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
         }
     }, [timerId])
 
+    // 禁用屏幕常亮的函数
+    const disableKeepAwake = useCallback(() => {
+        if (!keepAwakeAvailable.current) return;
+
+        try {
+            KeepAwake.allowSleep()
+                .catch(error => {
+                    console.warn('禁用屏幕常亮失败:', error);
+                });
+        } catch (error) {
+            console.warn('调用 KeepAwake.allowSleep 失败:', error);
+        }
+    }, []);
+
+    // 启用屏幕常亮的函数
+    const enableKeepAwake = useCallback(() => {
+        if (!keepAwakeAvailable.current) return;
+
+        try {
+            // 检查是否在iOS平台上
+            const isIOS = Capacitor.getPlatform() === 'ios';
+
+            if (isIOS) {
+                // iOS平台上可能会有权限问题，使用try-catch并设置超时
+                const timeoutId = setTimeout(() => {
+                    console.log('启用屏幕常亮超时，可能不支持此功能');
+                    keepAwakeAvailable.current = false;
+                }, 500);
+
+                KeepAwake.keepAwake()
+                    .then(() => {
+                        clearTimeout(timeoutId);
+                        console.log('屏幕常亮已启用');
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        console.warn('启用屏幕常亮失败，将禁用此功能:', error);
+                        keepAwakeAvailable.current = false;
+                    });
+            } else {
+                // 非iOS平台正常调用
+                KeepAwake.keepAwake()
+                    .catch(error => {
+                        console.warn('启用屏幕常亮失败:', error);
+                        keepAwakeAvailable.current = false;
+                    });
+            }
+        } catch (error) {
+            console.warn('调用 KeepAwake 失败，将禁用此功能:', error);
+            keepAwakeAvailable.current = false;
+        }
+    }, []);
+
     useEffect(() => {
         return () => {
             if (timerId) {
                 clearInterval(timerId)
             }
+            // 组件卸载时禁用屏幕常亮
+            disableKeepAwake();
         }
-    }, [timerId])
+    }, [timerId, disableKeepAwake])
 
     const handleComplete = useCallback(() => {
+        if (isCompletingRef.current) return
+
+        isCompletingRef.current = true
+
         clearTimerAndStates()
         setIsRunning(false)
         setShowComplete(true)
         onComplete?.(true, currentTime)
         onTimerComplete?.()
         playSound('correct')
-    }, [clearTimerAndStates, onComplete, onTimerComplete, playSound, currentTime])
+        // 禁用屏幕常亮
+        disableKeepAwake()
+    }, [clearTimerAndStates, onComplete, onTimerComplete, playSound, currentTime, disableKeepAwake])
 
     const startMainTimer = useCallback(() => {
         if (currentBrewingMethod) {
@@ -329,6 +394,9 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
     const startTimer = useCallback(() => {
         if (!isRunning && currentBrewingMethod) {
             setIsRunning(true)
+            // 启用屏幕常亮
+            enableKeepAwake()
+
             if (!hasStartedOnce || currentTime === 0) {
                 setCountdownTime(3)
                 setHasStartedOnce(true)
@@ -336,12 +404,14 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
                 startMainTimer()
             }
         }
-    }, [isRunning, currentBrewingMethod, hasStartedOnce, startMainTimer, currentTime])
+    }, [isRunning, currentBrewingMethod, hasStartedOnce, startMainTimer, currentTime, enableKeepAwake])
 
     const pauseTimer = useCallback(() => {
         clearTimerAndStates()
         setIsRunning(false)
-    }, [clearTimerAndStates])
+        // 禁用屏幕常亮
+        disableKeepAwake()
+    }, [clearTimerAndStates, disableKeepAwake])
 
     const resetTimer = useCallback(() => {
         clearTimerAndStates()
@@ -351,7 +421,10 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
         setCurrentWaterAmount(0)
         setCountdownTime(null)
         setHasStartedOnce(false)
-    }, [clearTimerAndStates])
+        isCompletingRef.current = false
+        // 禁用屏幕常亮
+        disableKeepAwake()
+    }, [clearTimerAndStates, disableKeepAwake])
 
     useEffect(() => {
         if (isRunning) {
