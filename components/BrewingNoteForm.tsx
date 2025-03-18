@@ -16,13 +16,9 @@ import type { BrewingNoteData } from '@/app/page'
 import { generateOptimizationJson } from '@/lib/jsonUtils'
 import { brewingMethods, type Method, type Stage } from '@/lib/config'
 import { Storage } from '@/lib/storage'
-
-interface TasteRatings {
-    acidity: number;
-    sweetness: number;
-    bitterness: number;
-    body: number;
-}
+// 导入参数调整系统
+import { generateAdjustmentAdvice, type TasteRatings, type BrewingParameters } from '@/lib/brewingAdjustment'
+import { saveCustomMethod } from '@/lib/customMethods'
 
 interface FormData {
     coffeeBeanInfo: {
@@ -33,6 +29,13 @@ interface FormData {
     rating: number;
     taste: TasteRatings;
     notes: string;
+}
+
+// 添加本地参数调整系统结果类型
+interface LocalAdjustmentResult {
+    generalAdvice: string;
+    adjustedParams: BrewingParameters;
+    explanations: Record<string, string>;
 }
 
 interface BrewingNoteFormProps {
@@ -79,6 +82,8 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
     const [optimizationNotes, setOptimizationNotes] = useState('')
     const [optimizationPrompt, setOptimizationPrompt] = useState('')
 
+    // 添加本地参数调整系统相关状态
+    const [localAdjustment, setLocalAdjustment] = useState<LocalAdjustmentResult | null>(null);
 
     // Update form data when initialData changes
     useEffect(() => {
@@ -362,6 +367,71 @@ stages数组中的每个阶段必须包含以下字段：
         }
     }, [isDragging])
 
+    // 实现本地参数调整系统
+    const generateLocalAdjustment = () => {
+        if (!initialData.params) {
+            alert('无法获取当前参数信息');
+            return;
+        }
+
+        try {
+            // 转换参数格式为参数调整系统所需的格式
+            const currentParams: BrewingParameters = {
+                coffee: initialData.params.coffee || '15g',
+                water: initialData.params.water || '225g',
+                ratio: initialData.params.ratio || '1:15',
+                grindSize: initialData.params.grindSize || '中细（白砂糖颗粒）',
+                temp: initialData.params.temp || '92°C',
+                stages: initialData.stages || [],
+            };
+
+            // 计算参数调整建议
+            const adjustmentResult = generateAdjustmentAdvice(
+                currentParams,
+                formData.taste,
+                idealTaste
+            );
+
+            // 设置调整结果
+            setLocalAdjustment(adjustmentResult);
+        } catch (error) {
+            console.error('生成调整参数时出错:', error);
+            alert('生成调整参数时出错，请重试');
+        }
+    };
+
+    // 实现导出配方功能
+    const handleExportRecipe = async () => {
+        if (!localAdjustment || !initialData.equipment) {
+            alert('无法获取调整后的参数或设备信息');
+            return;
+        }
+
+        try {
+            // 创建新的配方方法对象
+            const newMethod: Method = {
+                name: `${formData.coffeeBeanInfo.name || '自定义配方'} (优化版)`,
+                params: {
+                    coffee: localAdjustment.adjustedParams.coffee,
+                    water: localAdjustment.adjustedParams.water,
+                    ratio: localAdjustment.adjustedParams.ratio,
+                    grindSize: localAdjustment.adjustedParams.grindSize,
+                    temp: localAdjustment.adjustedParams.temp,
+                    videoUrl: "",
+                    roastLevel: formData.coffeeBeanInfo.roastLevel,
+                    stages: localAdjustment.adjustedParams.stages || [],
+                }
+            };
+
+            // 保存为自定义方案
+            await saveCustomMethod(newMethod, initialData.equipment, {});
+            alert('已成功保存为自定义方案');
+        } catch (error) {
+            console.error('保存自定义方案时出错:', error);
+            alert('保存自定义方案时出错，请重试');
+        }
+    };
+
     if (!isOpen) return null
 
     return (
@@ -631,6 +701,192 @@ stages数组中的每个阶段必须包含以下字段：
                                 className="w-full resize-none border-b border-neutral-200 rounded-none bg-transparent text-xs outline-none transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300"
                                 placeholder="还有其他优化目标？例如：提升层次感、增加果香、改善口感..."
                             />
+                        </div>
+
+                        {/* 本地参数调整系统 */}
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                                <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                    本地参数调整
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={generateLocalAdjustment}
+                                    className="text-[10px] tracking-widest text-emerald-600 transition-colors dark:text-emerald-500 font-medium"
+                                >
+                                    [ 智能计算调整参数 ]
+                                </button>
+                            </div>
+
+                            {localAdjustment && (
+                                <div className="space-y-6 mt-2 p-4 border border-neutral-200 dark:border-neutral-700 rounded-md bg-neutral-50 dark:bg-neutral-800/50">
+                                    {/* 调整建议摘要 */}
+                                    <div className="space-y-2">
+                                        <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                            调整建议
+                                        </div>
+                                        <div className="text-xs text-neutral-800 dark:text-neutral-300 whitespace-pre-line">
+                                            {localAdjustment.generalAdvice}
+                                        </div>
+                                    </div>
+
+                                    {/* 参数对比 */}
+                                    <div className="space-y-2">
+                                        <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                            参数对比
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                                    当前参数
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {initialData.params && (
+                                                        <>
+                                                            <li className="text-xs text-neutral-700 dark:text-neutral-400">
+                                                                咖啡粉量: {initialData.params.coffee}
+                                                            </li>
+                                                            <li className="text-xs text-neutral-700 dark:text-neutral-400">
+                                                                水量: {initialData.params.water}
+                                                            </li>
+                                                            <li className="text-xs text-neutral-700 dark:text-neutral-400">
+                                                                比例: {initialData.params.ratio}
+                                                            </li>
+                                                            <li className="text-xs text-neutral-700 dark:text-neutral-400">
+                                                                研磨度: {initialData.params.grindSize}
+                                                            </li>
+                                                            <li className="text-xs text-neutral-700 dark:text-neutral-400">
+                                                                水温: {initialData.params.temp}
+                                                            </li>
+                                                        </>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                                    调整后参数
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {localAdjustment?.adjustedParams && (
+                                                        <>
+                                                            <li className={`text-xs ${initialData.params?.coffee !== localAdjustment.adjustedParams.coffee
+                                                                ? 'text-emerald-600 dark:text-emerald-500 font-medium'
+                                                                : 'text-neutral-700 dark:text-neutral-400'
+                                                                }`}>
+                                                                咖啡粉量: {localAdjustment.adjustedParams.coffee}
+                                                            </li>
+                                                            <li className={`text-xs ${initialData.params?.water !== localAdjustment.adjustedParams.water
+                                                                ? 'text-emerald-600 dark:text-emerald-500 font-medium'
+                                                                : 'text-neutral-700 dark:text-neutral-400'
+                                                                }`}>
+                                                                水量: {localAdjustment.adjustedParams.water}
+                                                            </li>
+                                                            <li className={`text-xs ${initialData.params?.ratio !== localAdjustment.adjustedParams.ratio
+                                                                ? 'text-emerald-600 dark:text-emerald-500 font-medium'
+                                                                : 'text-neutral-700 dark:text-neutral-400'
+                                                                }`}>
+                                                                比例: {localAdjustment.adjustedParams.ratio}
+                                                            </li>
+                                                            <li className={`text-xs ${initialData.params?.grindSize !== localAdjustment.adjustedParams.grindSize
+                                                                ? 'text-emerald-600 dark:text-emerald-500 font-medium'
+                                                                : 'text-neutral-700 dark:text-neutral-400'
+                                                                }`}>
+                                                                研磨度: {localAdjustment.adjustedParams.grindSize}
+                                                            </li>
+                                                            <li className={`text-xs ${initialData.params?.temp !== localAdjustment.adjustedParams.temp
+                                                                ? 'text-emerald-600 dark:text-emerald-500 font-medium'
+                                                                : 'text-neutral-700 dark:text-neutral-400'
+                                                                }`}>
+                                                                水温: {localAdjustment.adjustedParams.temp}
+                                                            </li>
+                                                        </>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 注水阶段变化 */}
+                                    {localAdjustment.adjustedParams.stages && localAdjustment.adjustedParams.stages.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                                注水阶段调整
+                                            </div>
+                                            <div className="space-y-3">
+                                                {localAdjustment.adjustedParams.stages.map((stage, index) => {
+                                                    // 查找原始阶段进行比较
+                                                    const originalStage = initialData.stages && initialData.stages[index];
+                                                    const timeChanged = originalStage && originalStage.time !== stage.time;
+                                                    const pourTimeChanged = originalStage &&
+                                                        typeof originalStage.pourTime !== 'undefined' &&
+                                                        typeof stage.pourTime !== 'undefined' &&
+                                                        originalStage.pourTime !== stage.pourTime;
+
+                                                    return (
+                                                        <div key={index} className="border-l-2 border-neutral-200 dark:border-neutral-700 pl-3 py-1">
+                                                            <div className="text-xs font-medium text-neutral-800 dark:text-neutral-300">
+                                                                {stage.label}
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-1 mt-1">
+                                                                <div className={`text-[10px] ${timeChanged ? 'text-emerald-600 dark:text-emerald-500' : 'text-neutral-600 dark:text-neutral-500'}`}>
+                                                                    时间: {stage.time}秒
+                                                                    {timeChanged && originalStage && (
+                                                                        <span className="ml-1">
+                                                                            ({stage.time > originalStage.time ? '+' : ''}
+                                                                            {stage.time - originalStage.time}秒)
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className={`text-[10px] ${pourTimeChanged ? 'text-emerald-600 dark:text-emerald-500' : 'text-neutral-600 dark:text-neutral-500'}`}>
+                                                                    注水时间: {stage.pourTime || '-'}秒
+                                                                    {pourTimeChanged && originalStage && typeof stage.pourTime !== 'undefined' && typeof originalStage.pourTime !== 'undefined' && (
+                                                                        <span className="ml-1">
+                                                                            ({stage.pourTime > originalStage.pourTime ? '+' : ''}
+                                                                            {stage.pourTime - originalStage.pourTime}秒)
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-[10px] text-neutral-600 dark:text-neutral-500">
+                                                                    水量: {stage.water}
+                                                                </div>
+                                                                <div className="text-[10px] text-neutral-600 dark:text-neutral-500">
+                                                                    方式: {
+                                                                        stage.pourType && {
+                                                                            'circle': '绕圈注水',
+                                                                            'center': '中心注水',
+                                                                            'ice': '冰滴',
+                                                                            'other': '其他方式'
+                                                                        }[stage.pourType] || '其他方式'
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 导出配方按钮 */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <div className="text-[10px] tracking-widest text-neutral-400 dark:text-neutral-500">
+                                                导出新配方
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleExportRecipe}
+                                                className="text-[10px] tracking-widest text-emerald-600 transition-colors dark:text-emerald-500 font-medium"
+                                            >
+                                                [ 保存为自定义方案 ]
+                                            </button>
+                                        </div>
+                                        <div className="text-[10px] text-neutral-500 dark:text-neutral-500">
+                                            将调整后的参数保存为自定义方案，以便下次使用
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 生成优化提示词 */}
