@@ -27,8 +27,13 @@ const MethodTypeSelector: React.FC<MethodTypeSelectorProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.26, ease: "easeOut" }}
-            className="bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 pt-3 pb-safe px-6 px-safe"
-            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 28px)' }}
+            className="fixed bottom-0 left-0 right-0 z-[45] bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 pt-3 pb-safe px-6 px-safe"
+            style={{
+                paddingBottom: 'max(env(safe-area-inset-bottom), 28px)',
+                maxWidth: '500px',
+                margin: '0 auto',
+                width: '100%'
+            }}
         >
             <div className="flex justify-between items-center">
                 <button

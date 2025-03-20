@@ -539,13 +539,14 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.26 }}
-                className="px-6 sticky bottom-0 border-t border-neutral-200 bg-neutral-50 pt-6 dark:border-neutral-800 dark:bg-neutral-900 pb-safe"
+                className="px-6 sticky bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-neutral-50 pt-6 dark:border-neutral-800 dark:bg-neutral-900 pb-safe"
                 style={{
                     willChange: "transform, opacity",
-                    paddingBottom: 'max(env(safe-area-inset-bottom), 28px)'
+                    paddingBottom: 'max(env(safe-area-inset-bottom), 28px)',
+                    maxWidth: '500px',
+                    margin: '0 auto',
+                    width: '100%'
                 }}
-
-
             >
                 <div className="mb-4 space-y-3">
                     <motion.div

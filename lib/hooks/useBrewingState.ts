@@ -12,7 +12,7 @@ import {
 export type TabType = "器具" | "方案" | "注水" | "记录";
 
 // 添加新的主导航类型
-export type MainTabType = "冲煮" | "笔记";
+export type MainTabType = "首页" | "冲煮" | "笔记";
 
 // 修改冲煮步骤类型
 export type BrewingStep = "equipment" | "method" | "brewing" | "notes";
@@ -42,7 +42,7 @@ export interface Content {
 
 export function useBrewingState() {
 	// 添加主导航状态
-	const [activeMainTab, setActiveMainTab] = useState<MainTabType>("冲煮");
+	const [activeMainTab, setActiveMainTab] = useState<MainTabType>("首页");
 	// 修改冲煮步骤状态
 	const [activeBrewingStep, setActiveBrewingStep] =
 		useState<BrewingStep>("equipment");
