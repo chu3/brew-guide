@@ -15,7 +15,6 @@ interface SwipeBackGestureProps {
     force?: boolean;
     resetParams?: boolean;
     preserveStates?: string[];
-    preserveCoffeeBean?: boolean;
     preserveEquipment?: boolean;
     preserveMethod?: boolean;
   }) => void;
@@ -44,18 +43,11 @@ const SwipeBackGesture: React.FC<SwipeBackGestureProps> = ({
   // 以下步骤支持返回导航
   const NAVIGABLE_STEPS: Record<BrewingStep, BrewingStep | null> = {
     'brewing': 'method', // 从注水步骤返回到方案步骤
-    'method': 'equipment', // 从方案步骤返回到器具步骤
-    'equipment': 'coffeeBean', // 从器具步骤返回到咖啡豆步骤
-    'coffeeBean': null, // 咖啡豆步骤是第一步，没有返回步骤
-    'notes': 'brewing' // 从记录步骤返回到注水步骤
+    'method': null, // 方案步骤是第一步，没有返回步骤
   };
 
   // 确定当前步骤是否可以返回，以及应返回到哪个步骤
   const getBackStep = (): BrewingStep | null => {
-    // 如果当前是器具步骤且没有咖啡豆，则不允许返回到咖啡豆步骤
-    if (activeBrewingStep === 'equipment' && !hasCoffeeBeans) {
-      return null;
-    }
     return NAVIGABLE_STEPS[activeBrewingStep];
   };
 
@@ -153,23 +145,18 @@ const SwipeBackGesture: React.FC<SwipeBackGestureProps> = ({
       
       // 处理从注水步骤返回到方案步骤的特殊情况
       if (activeBrewingStep === 'brewing' && backStep === 'method') {
-        // 设置特殊标记，确保可以正常导航
-        localStorage.setItem("fromMethodToBrewing", "true");
-        
-        // 使用navigateToStep返回到前一个步骤
+        // 使用navigateToStep返回到前一个步骤，添加必要的选项
         navigateToStep(backStep, {
           force: true,
           preserveStates: ["all"],
-          preserveCoffeeBean: true,
           preserveEquipment: true,
           preserveMethod: true
         });
       } else {
         // 其他步骤的返回导航
         navigateToStep(backStep, {
-          preserveCoffeeBean: true,
-          preserveEquipment: activeBrewingStep !== 'equipment',
-          preserveMethod: activeBrewingStep === 'notes'
+          preserveEquipment: true,
+          preserveMethod: true
         });
       }
     } else {
@@ -204,7 +191,7 @@ const SwipeBackGesture: React.FC<SwipeBackGestureProps> = ({
         document.removeEventListener('touchcancel', resetGesture);
       };
     }
-  }, [isActive, activeBrewingStep, isTimerRunning, showComplete, isNative, disabled, progress, hasCoffeeBeans]);
+  }, [isActive, activeBrewingStep, isTimerRunning, showComplete, isNative, disabled, progress]);
 
   // 如果不是原生平台，不显示任何内容
   if (!isNative || !getBackStep()) {

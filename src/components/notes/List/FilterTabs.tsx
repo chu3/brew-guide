@@ -70,7 +70,7 @@ const FilterTabs: React.FC<FilterTabsProps> = memo(function FilterTabs({
                             <>
                                 <button
                                     onClick={() => onEquipmentClick(null)}
-                                    className={`pb-1.5 mr-2 text-[11px] whitespace-nowrap relative ${selectedEquipment === null ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                    className={`pb-1.5 mr-2 text-xs whitespace-nowrap relative ${selectedEquipment === null ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                 >
                                     <span className="relative">全部记录</span>
                                     {selectedEquipment === null && (
@@ -81,7 +81,7 @@ const FilterTabs: React.FC<FilterTabsProps> = memo(function FilterTabs({
                                     <button
                                         key={equipment}
                                         onClick={() => onEquipmentClick(equipment)}
-                                        className={`pb-1.5 mx-2 text-[11px] whitespace-nowrap relative ${selectedEquipment === equipment ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                        className={`pb-1.5 mx-2 text-xs whitespace-nowrap relative ${selectedEquipment === equipment ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                     >
                                         <span className="relative">{equipmentNames[equipment] || equipment}</span>
                                         {selectedEquipment === equipment && (
@@ -105,7 +105,7 @@ const FilterTabs: React.FC<FilterTabsProps> = memo(function FilterTabs({
                                     <button
                                         key={bean}
                                         onClick={() => onBeanClick(bean)}
-                                        className={`pb-1.5 mx-2 text-[11px] whitespace-nowrap relative ${selectedBean === bean ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                        className={`pb-1.5 mx-2 text-xs whitespace-nowrap relative ${selectedBean === bean ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                     >
                                         <span className="relative">{bean}</span>
                                         {selectedBean === bean && (
@@ -123,7 +123,7 @@ const FilterTabs: React.FC<FilterTabsProps> = memo(function FilterTabs({
                     <div className="absolute right-6 top-0 bottom-0 flex items-center bg-neutral-50 dark:bg-neutral-900 pl-1 before:content-[''] before:absolute before:left-[-20px] before:top-0 before:bottom-0 before:w-5 before:bg-gradient-to-r before:from-transparent before:to-neutral-50 dark:before:to-neutral-900 before:pointer-events-none">
                         <button
                             onClick={() => onFilterModeChange(filterMode === 'equipment' ? 'bean' : 'equipment')}
-                            className={`pb-1.5 text-[11px] whitespace-nowrap relative text-neutral-600 dark:text-neutral-400`}
+                            className={`pb-1.5 text-xs whitespace-nowrap relative text-neutral-600 dark:text-neutral-400`}
                         >
                             <span className="relative">{filterMode === 'equipment' ? '按器具' : '按豆子'}</span>
                         </button>
@@ -131,7 +131,7 @@ const FilterTabs: React.FC<FilterTabsProps> = memo(function FilterTabs({
                         {/* 搜索按钮 - 使用"找笔记"文字代替图标 */}
                         <button
                             onClick={handleSearchClick}
-                            className="ml-3 pb-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center whitespace-nowrap"
+                            className="ml-3 pb-1.5 text-xs text-neutral-600 dark:text-neutral-400 flex items-center whitespace-nowrap"
                         >
                             <span className="relative">找笔记</span>
                         </button>

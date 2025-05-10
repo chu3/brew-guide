@@ -1,22 +1,18 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
 
-import type { BrewingNoteData, CoffeeBean } from '@/types/app'
+import type { BrewingNoteData, CoffeeBean, TasteRatings } from '@/types/app'
 import AutoResizeTextarea from '@/components/common/forms/AutoResizeTextarea'
-
-interface TasteRatings {
-    acidity: number;
-    sweetness: number;
-    bitterness: number;
-    body: number;
-}
+import { CoffeeBeanManager } from '@/lib/managers/coffeeBeanManager'
+import AutocompleteInput from '@/components/common/forms/AutocompleteInput'
 
 interface FormData {
     coffeeBeanInfo: {
         name: string;
         roastLevel: string;
+        roastDate?: string;
     };
     image?: string;
     rating: number;
@@ -119,6 +115,62 @@ function compressBase64(base64: string, quality = 0.7, maxWidth = 800): Promise<
   });
 }
 
+// 计算咖啡豆的赏味期阶段
+const getBeanFreshStatus = (bean: CoffeeBean): {
+  phase: '养豆期' | '赏味期' | '衰退期' | '未知';
+  textClass: string;
+} => {
+  if (!bean.roastDate) return { 
+    phase: '未知', 
+    textClass: 'text-neutral-500 dark:text-neutral-400'
+  };
+
+  const today = new Date();
+  const roastDate = new Date(bean.roastDate);
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const roastDateOnly = new Date(roastDate.getFullYear(), roastDate.getMonth(), roastDate.getDate());
+  const daysSinceRoast = Math.ceil((todayDate.getTime() - roastDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+
+  // 优先使用自定义赏味期参数，如果没有则根据烘焙度计算
+  let startDay = bean.startDay || 0;
+  let endDay = bean.endDay || 0;
+
+  // 如果没有自定义值，则根据烘焙度设置默认值
+  if (startDay === 0 && endDay === 0) {
+    if (bean.roastLevel?.includes('浅')) {
+      startDay = 7;
+      endDay = 30;
+    } else if (bean.roastLevel?.includes('深')) {
+      startDay = 14;
+      endDay = 60;
+    } else {
+      // 默认为中烘焙
+      startDay = 10;
+      endDay = 30;
+    }
+  }
+
+  if (daysSinceRoast < startDay) {
+    // 养豆期
+    return { 
+      phase: '养豆期', 
+      textClass: 'text-amber-500 dark:text-amber-400' 
+    };
+  } else if (daysSinceRoast <= endDay) {
+    // 赏味期
+    return { 
+      phase: '赏味期', 
+      textClass: 'text-emerald-600 dark:text-emerald-400' 
+    };
+  } else {
+    // 衰退期
+    return { 
+      phase: '衰退期', 
+      textClass: 'text-neutral-500 dark:text-neutral-400' 
+    };
+  }
+};
+
 const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
     id,
     isOpen,
@@ -133,11 +185,20 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
         ? {
             name: initialData.coffeeBean.name || '',
             roastLevel: initialData.coffeeBean.roastLevel || '中度烘焙',
+            roastDate: initialData.coffeeBean.roastDate
         }
         : {
             name: initialData.coffeeBeanInfo?.name || '',
             roastLevel: initialData.coffeeBeanInfo?.roastLevel || '中度烘焙',
+            roastDate: initialData.coffeeBeanInfo?.roastDate
         };
+
+    // 新增状态用于管理咖啡豆
+    const [availableBeans, setAvailableBeans] = useState<CoffeeBean[]>([]);
+    const [selectedBean, setSelectedBean] = useState<CoffeeBean | null>(
+        initialData.coffeeBean || null
+    );
+    const [beanSearchQuery, setBeanSearchQuery] = useState(initialCoffeeBeanInfo.name || '');
 
     const [formData, setFormData] = useState<FormData>({
         coffeeBeanInfo: initialCoffeeBeanInfo,
@@ -499,6 +560,83 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
         }
     };
 
+    // 获取可用的咖啡豆列表
+    useEffect(() => {
+        async function loadBeans() {
+            try {
+                const beans = await CoffeeBeanManager.getAllBeans();
+                // 过滤出有剩余量的咖啡豆
+                const filtered = beans.filter(bean => {
+                    // 如果没有设置容量，则直接显示
+                    if (!bean.capacity || bean.capacity === '0' || bean.capacity === '0g') {
+                        return true;
+                    }
+                    
+                    // 考虑remaining可能是字符串或者数字
+                    const remaining = typeof bean.remaining === 'string' 
+                        ? parseFloat(bean.remaining) 
+                        : Number(bean.remaining);
+                    
+                    // 只过滤掉有容量设置且剩余量为0的咖啡豆
+                    return remaining > 0;
+                });
+                
+                setAvailableBeans(filtered);
+            } catch (error) {
+                console.error('获取咖啡豆数据失败:', error);
+            }
+        }
+        
+        loadBeans();
+    }, []);
+
+    // 过滤咖啡豆名称以匹配搜索查询
+    const filteredBeanSuggestions = useMemo(() => {
+        if (!beanSearchQuery.trim()) {
+            return availableBeans.map(bean => bean.name);
+        }
+        
+        const query = beanSearchQuery.toLowerCase().trim();
+        return availableBeans
+            .filter(bean => bean.name.toLowerCase().includes(query))
+            .map(bean => bean.name);
+    }, [availableBeans, beanSearchQuery]);
+
+    // 处理选中咖啡豆
+    const handleSelectBean = (bean: CoffeeBean | null) => {
+        setSelectedBean(bean);
+        
+        if (bean) {
+            // 更新表单数据，填充咖啡豆信息
+            setFormData({
+                ...formData,
+                coffeeBeanInfo: {
+                    name: bean.name,
+                    roastLevel: bean.roastLevel || '中度烘焙',
+                    roastDate: bean.roastDate
+                },
+            });
+        }
+    };
+
+    // 处理选择建议
+    const handleSelectSuggestion = (suggestedName: string) => {
+        const matchedBean = availableBeans.find(bean => bean.name === suggestedName);
+        if (matchedBean) {
+            handleSelectBean(matchedBean);
+        } else {
+            // 如果只是输入了一个不存在的名称，更新表单但不设置selectedBean
+            setFormData({
+                ...formData,
+                coffeeBeanInfo: {
+                    ...formData.coffeeBeanInfo,
+                    name: suggestedName,
+                },
+            });
+            setSelectedBean(null);
+        }
+    };
+
     // 保存笔记的处理函数
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -512,9 +650,25 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
             method: initialData.method,
             params: methodParams,
             totalTime: initialData.totalTime,
+            // 添加选中的咖啡豆ID以建立关联
+            coffeeBean: selectedBean,
         };
 
         try {
+            // 如果选中了咖啡豆，且有咖啡用量，则更新咖啡豆剩余量
+            if (selectedBean?.id && methodParams.coffee) {
+                // 从咖啡用量字符串中提取数值部分
+                const coffeeMatch = methodParams.coffee.match(/(\d+(\.\d+)?)/);
+                if (coffeeMatch) {
+                    const usedAmount = parseFloat(coffeeMatch[0]);
+                    if (!isNaN(usedAmount) && usedAmount > 0) {
+                        // 更新咖啡豆剩余量
+                        CoffeeBeanManager.updateBeanRemaining(selectedBean.id, usedAmount)
+                            .catch(err => console.error('更新咖啡豆剩余量失败:', err));
+                    }
+                }
+            }
+
             // 保存笔记
             onSave(noteData);
         } catch (error) {
@@ -666,43 +820,105 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                     <div className="grid gap-6">
                         <div className="grid grid-cols-2 gap-6">
                             <div>
-                                <input
-                                    type="text"
-                                    value={formData.coffeeBeanInfo.name}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            coffeeBeanInfo: {
-                                                ...formData.coffeeBeanInfo,
-                                                name: e.target.value,
-                                            },
-                                        })
-                                    }
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-none transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
-                                    placeholder="咖啡豆名称"
-                                />
+                                <div className="relative">
+                                    <AutocompleteInput
+                                        value={formData.coffeeBeanInfo.name}
+                                        onChange={(value) => {
+                                            setBeanSearchQuery(value);
+                                            // 更新表单数据
+                                            setFormData({
+                                                ...formData,
+                                                coffeeBeanInfo: {
+                                                    ...formData.coffeeBeanInfo,
+                                                    name: value,
+                                                },
+                                            });
+                                            
+                                            // 如果输入的值与某个豆子的名称完全匹配，选中该豆子
+                                            const matchedBean = availableBeans.find(bean => 
+                                                bean.name === value
+                                            );
+                                            
+                                            if (matchedBean) {
+                                                handleSelectBean(matchedBean);
+                                            } else if (!value) {
+                                                // 如果清空了输入，清除选中的豆子
+                                                setSelectedBean(null);
+                                            }
+                                        }}
+                                        suggestions={filteredBeanSuggestions}
+                                        className="w-full border-b border-neutral-200 dark:border-neutral-800 bg-transparent py-2 text-xs outline-none transition-colors focus:border-neutral-400 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
+                                        placeholder="咖啡豆名称"
+                                    />
+                                </div>
+                                
+                                {/* 咖啡豆状态和解绑按钮 */}
+                                {selectedBean && (
+                                    <div className="mt-1 flex justify-between items-center">
+                                        <div className="flex items-center space-x-2">
+                                            {/* 剩余量提示 */}
+                                            {selectedBean.capacity && selectedBean.remaining && (
+                                                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                                    剩余: {selectedBean.remaining}/{selectedBean.capacity}
+                                                </span>
+                                            )}
+                                            {/* 赏味期状态 */}
+                                            {selectedBean.roastDate && (
+                                                <span className={`text-[10px] ${getBeanFreshStatus(selectedBean).textClass}`}>
+                                                    ({getBeanFreshStatus(selectedBean).phase})
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        {/* 解绑按钮 */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedBean(null);
+                                                // 清空咖啡豆名称
+                                                setFormData({
+                                                    ...formData,
+                                                    coffeeBeanInfo: {
+                                                        ...formData.coffeeBeanInfo,
+                                                        name: '',  // 清空名称
+                                                        // 重置烘焙度为默认值
+                                                        roastLevel: '中度烘焙'
+                                                    }
+                                                });
+                                                // 同时清空搜索查询
+                                                setBeanSearchQuery('');
+                                            }}
+                                            className="text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                                        >
+                                            解除绑定
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                             <div>
-                                <select
-                                    value={formData.coffeeBeanInfo.roastLevel}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            coffeeBeanInfo: {
-                                                ...formData.coffeeBeanInfo,
-                                                roastLevel: e.target.value,
-                                            },
-                                        })
-                                    }
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-none transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 text-neutral-800 dark:text-neutral-300"
-                                >
-                                    <option value="极浅烘焙">极浅烘焙</option>
-                                    <option value="浅度烘焙">浅度烘焙</option>
-                                    <option value="中浅烘焙">中浅烘焙</option>
-                                    <option value="中度烘焙">中度烘焙</option>
-                                    <option value="中深烘焙">中深烘焙</option>
-                                    <option value="深度烘焙">深度烘焙</option>
-                                </select>
+                                <div className="relative">
+                                    <select
+                                        value={formData.coffeeBeanInfo.roastLevel}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                coffeeBeanInfo: {
+                                                    ...formData.coffeeBeanInfo,
+                                                    roastLevel: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        disabled={!!selectedBean} // 当选中库存咖啡豆时禁用
+                                        className="w-full border-b border-neutral-200 dark:border-neutral-800 bg-transparent py-2 text-xs outline-none transition-colors focus:border-neutral-400 dark:focus:border-neutral-600 text-neutral-800 dark:text-neutral-300 disabled:text-neutral-500 dark:disabled:text-neutral-500 appearance-none"
+                                    >
+                                        <option value="极浅烘焙">极浅烘焙</option>
+                                        <option value="浅度烘焙">浅度烘焙</option>
+                                        <option value="中浅烘焙">中浅烘焙</option>
+                                        <option value="中度烘焙">中度烘焙</option>
+                                        <option value="中深烘焙">中深烘焙</option>
+                                        <option value="深度烘焙">深度烘焙</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -69,9 +69,16 @@ export function updateParameterInfo(
 	equipmentList: EquipmentItem[],
 	customEquipments: EquipmentItem[] = []
 ) {
-	// 为了防止任何可能的问题，特别保护fromMethodToBrewing标记
-	const hasMethodToBrewing =
-		localStorage.getItem("fromMethodToBrewing") === "true";
+	// 检查是否在记录表单阶段，如果是则不更新参数栏
+	// 这个检查可以防止在显示记录表单时参数栏被意外更新
+	if (typeof window !== "undefined" && localStorage.getItem("brewingNoteInProgress") === "true") {
+		// 如果正在显示记录表单，跳过参数更新
+		// 但对于特别指定的"方法"步骤，允许更新
+		if (step !== "method") {
+			console.log("跳过参数更新：正在显示记录表单");
+			return;
+		}
+	}
 
 	// 获取设备名称，同时考虑系统预设器具和自定义器具
 	let equipmentName: string | null = null;
@@ -83,20 +90,6 @@ export function updateParameterInfo(
 
 	// 根据当前步骤更新不同的参数信息
 	switch (step) {
-		case "coffeeBean":
-			paramInfo = {
-				equipment: null,
-				method: null,
-				params: null,
-			};
-			break;
-		case "equipment":
-			paramInfo = {
-				equipment: equipmentName,
-				method: null,
-				params: null,
-			};
-			break;
 		case "method":
 			paramInfo = {
 				equipment: equipmentName,
@@ -105,29 +98,6 @@ export function updateParameterInfo(
 			};
 			break;
 		case "brewing":
-			if (selectedMethod) {
-				const extractedParams: Record<string, string | undefined> = {
-					coffee: selectedMethod.params.coffee,
-					water: selectedMethod.params.water,
-					ratio: selectedMethod.params.ratio,
-					grindSize: selectedMethod.params.grindSize,
-					temp: selectedMethod.params.temp,
-				};
-
-				paramInfo = {
-					equipment: equipmentName,
-					method: selectedMethod.name,
-					params: extractedParams,
-				};
-			} else {
-				paramInfo = {
-					equipment: equipmentName,
-					method: null,
-					params: null,
-				};
-			}
-			break;
-		case "notes":
 			if (selectedMethod) {
 				const extractedParams: Record<string, string | undefined> = {
 					coffee: selectedMethod.params.coffee,
@@ -161,9 +131,4 @@ export function updateParameterInfo(
 
 	// 发送参数更新事件
 	emitEvent(BREWING_EVENTS.PARAMS_UPDATED, paramInfo);
-
-	// 如果之前有fromMethodToBrewing标记，恢复它
-	if (hasMethodToBrewing) {
-		localStorage.setItem("fromMethodToBrewing", "true");
-	}
 }

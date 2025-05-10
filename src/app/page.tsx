@@ -27,12 +27,14 @@ import { BREWING_EVENTS } from '@/lib/brewing/constants'
 import type { BrewingNoteData } from '@/types/app'
 import { updateParameterInfo } from '@/lib/brewing/parameters'
 import BrewingNoteFormModal from '@/components/notes/Form/BrewingNoteFormModal'
+import { SimpleNoteModal } from '@/components/notes/Form'
 import ErrorBoundary from '@/components/common/ui/ErrorBoundary'
 import CoffeeBeans from '@/components/coffee-bean/List'
 import SwipeBackGesture from '@/components/app/SwipeBackGesture'
 import { loadCustomEquipments, saveCustomEquipment, deleteCustomEquipment } from '@/lib/managers/customEquipments'
 import CustomEquipmentFormModal from '@/components/equipment/forms/CustomEquipmentFormModal'
 import EquipmentImportModal from '@/components/equipment/import/EquipmentImportModal'
+import EquipmentShareModal from '@/components/equipment/share/EquipmentShareModal'
 
 // 为Window对象声明类型扩展
 declare global {
@@ -150,8 +152,8 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
     // 添加一个状态来跟踪是否已经自动跳转过
     const [hasAutoNavigatedToNotes, setHasAutoNavigatedToNotes] = useState(false);
 
-    // 使用自定义Hooks，传入初始步骤
-    const initialStep: BrewingStep = initialHasBeans ? 'coffeeBean' : 'equipment';
+    // 从 initialHasBeans 确定初始步骤
+    const initialStep: 'method' = 'method';
 
     // 添加一个状态来跟踪当前阶段是否为等待阶段
     const [isStageWaiting, setIsStageWaiting] = useState(false);
@@ -220,6 +222,14 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         loadEquipments();
     }, []);
 
+    // 默认选择V60器具
+    useEffect(() => {
+        // 如果没有选择器具，默认选择V60
+        if (!selectedEquipment && activeBrewingStep === 'method') {
+            handleEquipmentSelect('V60');
+        }
+    }, [selectedEquipment, activeBrewingStep]);
+
     const contentHooks = useBrewingContent({
         selectedEquipment,
         methodType,
@@ -257,6 +267,10 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         const initializeApp = async () => {
             try {
                 console.log('初始化应用...');
+                
+                // 清除所有可能残留的状态标志
+                localStorage.setItem("brewingNoteInProgress", "false");
+                localStorage.setItem("wasInNoteForm", "false");
                 
                 // 首先修复现有方案数据关联
                 try {
@@ -365,16 +379,6 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         if (activeMainTab === '冲煮') {
             setShowHistory(false);
 
-            // 检查是否是从记录到注水的特殊跳转
-            const fromNotesToBrewing = localStorage.getItem("fromNotesToBrewing");
-
-            // 如果是从记录到注水的特殊跳转，不做任何状态重置
-            if (fromNotesToBrewing === "true") {
-                // 清除标记
-                localStorage.removeItem("fromNotesToBrewing");
-                return;
-            }
-
             // 检查是否有咖啡豆和是否应该从咖啡豆步骤开始
             const shouldStartFromCoffeeBeanStep = localStorage.getItem('shouldStartFromCoffeeBeanStep');
 
@@ -384,22 +388,24 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 localStorage.removeItem('shouldStartFromCoffeeBeanStep');
                 // 重置brewing状态
                 resetBrewingState(false); // 完全重置状态
-                // 设置步骤为咖啡豆，使用统一导航函数
-                navigateToStep('coffeeBean');
+                // 设置步骤为方案，使用统一导航函数
+                navigateToStep('method');
             }
             // 如果是从笔记页面切换过来的且笔记已保存，也重置状态
             else if (prevMainTabRef.current === '笔记' && isNoteSaved) {
                 // 重置状态
                 resetBrewingState(false); // 完全重置状态
-                // 如果有咖啡豆，从咖啡豆步骤开始，使用统一导航函数
-                if (hasCoffeeBeans) {
-                    navigateToStep('coffeeBean');
-                } else {
-                    // 没有咖啡豆，从器具步骤开始，使用统一导航函数
-                    navigateToStep('equipment');
-                }
+                // 如果有咖啡豆，从方案步骤开始，使用统一导航函数
+                navigateToStep('method');
                 // 重置标志
                 setIsNoteSaved(false);
+            }
+            // 如果是从其他页面切换过来的，重置状态
+            else if (prevMainTabRef.current !== '冲煮' && prevMainTabRef.current !== null) {
+                // 重置状态
+                resetBrewingState(true); // 部分重置状态
+                // 从方案步骤开始，使用统一导航函数
+                navigateToStep('method');
             }
         }
 
@@ -432,9 +438,12 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
     // 监听冲煮完成和重置事件
     useEffect(() => {
         const handleBrewingComplete = () => {
-            // 当冲煮完成时，设置完成状态
+            // 当冲煮完成时，设置完成状态，但不触发参数栏更新
             setShowComplete(true);
             setIsCoffeeBrewed(true);
+            
+            // 设置标志，表示现在处于显示记录表单阶段
+            localStorage.setItem("brewingNoteInProgress", "true");
         };
 
         const handleBrewingReset = () => {
@@ -444,12 +453,72 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             setShowComplete(false);
             // 重置冲煮状态
             setIsCoffeeBrewed(false);
+            // 清除记录表单阶段标志
+            localStorage.setItem("brewingNoteInProgress", "false");
+        };
+
+        // 新增：处理从注水页面返回到方法页面的事件
+        const handleReturnToMethod = (e: CustomEvent) => {
+            // 清除记录表单状态标记
+            localStorage.setItem("brewingNoteInProgress", "false");
+            
+            // 确保UI状态被重置
+            setShowComplete(false);
+            setIsCoffeeBrewed(false);
+            
+            // 如果有选中的方法，确保参数栏正确显示
+            if (selectedMethod && selectedEquipment) {
+                // 更新参数栏信息，确保在返回后参数栏能正确显示
+                updateParameterInfo(
+                    "method",
+                    selectedEquipment,
+                    selectedMethod as any,
+                    equipmentList,
+                    customEquipments
+                );
+            }
+        };
+
+        // 新增：处理记录表单模态框关闭的事件
+        const handleNoteFormClose = () => {
+            // 确保参数栏状态被重置
+            if (selectedMethod && selectedEquipment) {
+                // 设置短暂延迟以确保DOM更新完成
+                setTimeout(() => {
+                    // 确保当前在方法页面时更新参数栏
+                    if (activeBrewingStep === 'method') {
+                        // 触发参数栏更新
+                        updateParameterInfo(
+                            "method",
+                            selectedEquipment,
+                            selectedMethod as any,
+                            equipmentList,
+                            customEquipments
+                        );
+                    } else if (activeBrewingStep === 'brewing') {
+                        // 如果在注水步骤，也更新参数栏
+                        updateParameterInfo(
+                            "brewing",
+                            selectedEquipment,
+                            selectedMethod as any,
+                            equipmentList,
+                            customEquipments
+                        );
+                    }
+                }, 150);
+            }
+            
+            // 重置笔记相关状态
+            setIsCoffeeBrewed(false);
+            setShowComplete(false);
         };
 
         const handleMethodToBrewing = () => {
             // 重置冲煮完成状态，但保留其他状态
             setShowComplete(false);
             setIsCoffeeBrewed(false);
+            // 清除记录表单阶段标志
+            localStorage.setItem("brewingNoteInProgress", "false");
             
             // 确保参数栏中的器具名称显示正确
             if (selectedEquipment && (currentBrewingMethod || selectedMethod)) {
@@ -460,7 +529,7 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 updateParameterInfo(
                     "brewing",
                     selectedEquipment,
-                    method,
+                    method as any, // 使用类型断言解决类型不兼容问题
                     equipmentList,
                     customEquipments
                 );
@@ -530,6 +599,35 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             }
         };
 
+        // 新增：处理方法选择事件，特别是从记录模态框返回后
+        const handleMethodSelected = (e: CustomEvent) => {
+            const { method, fromNoteForm } = e.detail;
+            
+            if (fromNoteForm && method) {
+                // 在方法被选择后强制更新UI
+                setActiveBrewingStep('brewing');
+                
+                // 确保正确更新参数栏信息
+                if (selectedEquipment) {
+                    // 延迟更新，确保DOM已更新
+                    setTimeout(() => {
+                        updateParameterInfo(
+                            "brewing",
+                            selectedEquipment,
+                            method as any,
+                            equipmentList,
+                            customEquipments
+                        );
+                    }, 50);
+                }
+            }
+        };
+
+        // 添加新的事件监听器
+        window.addEventListener('brewing:methodSelected', handleMethodSelected as EventListener);
+        window.addEventListener('brewing:returnToMethod', handleReturnToMethod as EventListener);
+        window.addEventListener('brewing:noteFormClosed', handleNoteFormClose);
+        
         // 添加事件监听
         window.addEventListener('brewing:complete', handleBrewingComplete);
         window.addEventListener('brewing:reset', handleBrewingReset);
@@ -542,6 +640,9 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
 
         // 清理函数
         return () => {
+            window.removeEventListener('brewing:methodSelected', handleMethodSelected as EventListener);
+            window.removeEventListener('brewing:returnToMethod', handleReturnToMethod as EventListener);
+            window.removeEventListener('brewing:noteFormClosed', handleNoteFormClose);
             window.removeEventListener('brewing:complete', handleBrewingComplete);
             window.removeEventListener('brewing:reset', handleBrewingReset);
             window.removeEventListener('brewing:methodToBrewing', handleMethodToBrewing);
@@ -551,7 +652,21 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             window.removeEventListener('brewing:countdownChange', handleCountdownChange as EventListener);
             window.removeEventListener('brewing:layoutChange', handleLayoutChange as EventListener);
         };
-    }, [setShowComplete, setIsCoffeeBrewed, setHasAutoNavigatedToNotes, setIsTimerRunning, setCurrentStage, setCountdownTime, setIsStageWaiting, currentBrewingMethod, selectedCoffeeBeanData, selectedEquipment, selectedMethod, customEquipments]);
+    }, [
+        setShowComplete, 
+        setIsCoffeeBrewed, 
+        setHasAutoNavigatedToNotes, 
+        setIsTimerRunning, 
+        setCurrentStage, 
+        setCountdownTime, 
+        setIsStageWaiting, 
+        currentBrewingMethod, 
+        selectedCoffeeBeanData, 
+        selectedEquipment, 
+        selectedMethod, 
+        customEquipments,
+        activeBrewingStep
+    ]);
 
     // 处理布局设置变更
     const handleLayoutChange = (e: CustomEvent) => {
@@ -566,89 +681,117 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         }
     };
 
-    // 修改处理步骤点击的包装函数，允许在冲煮完成后切换到记录
+    // 更新步骤导航逻辑
     const handleBrewingStepClickWrapper = (step: BrewingStep) => {
         // 特殊处理：从注水返回到方案步骤的情况
         if (activeBrewingStep === 'brewing' && step === 'method') {
-            // 设置特殊标记，确保可以正常导航
-            localStorage.setItem("fromMethodToBrewing", "true");
-
             // 如果当前在冲煮完成状态，重置相关状态
             if (showComplete || isCoffeeBrewed) {
                 setShowComplete(false);
                 setIsCoffeeBrewed(false);
+                
+                // 清除记录表单阶段标志
+                localStorage.setItem("brewingNoteInProgress", "false");
             }
         }
 
-        // 检查是否从记录返回到方案，这是一种特殊情况
-        if (activeBrewingStep === 'notes' && step === 'method') {
-            // 确保冲煮状态已重置
-            setShowComplete(false);
-            setIsCoffeeBrewed(false);
-        }
-
-        // 使用navigateToStep来处理导航，它会处理更复杂的导航逻辑
+        // 使用navigateToStep来处理导航
         navigateToStep(step, {
             // 如果是从注水到方案，使用特殊选项
             force: (activeBrewingStep === 'brewing' && step === 'method'),
             // 如果是从brewing到method，保留所有状态
             preserveStates: (activeBrewingStep === 'brewing' && step === 'method') ? ["all"] : [],
-            preserveCoffeeBean: true,
             preserveEquipment: true,
             preserveMethod: (activeBrewingStep === 'brewing' && step === 'method')
         });
-
-        // 如果是从注水到方案的导航，确保标记被设置
-        if (activeBrewingStep === 'brewing' && step === 'method') {
-            // 延迟设置标记，确保在其他操作完成后标记依然存在
-            setTimeout(() => {
-                localStorage.setItem("fromMethodToBrewing", "true");
-            }, 100);
-        }
     };
 
-    // 修改方法选择的包装函数
+    // 方法选择的包装函数
     const handleMethodSelectWrapper = useCallback(async (index: number, step?: Step) => {
         // 检查是否在冲煮完成状态选择了新的方案
         if (isCoffeeBrewed) {
             // 确保isCoffeeBrewed状态被重置，允许正常的步骤导航
             setIsCoffeeBrewed(false);
+            setShowComplete(false);
         }
 
-        // 确定使用哪种方法类型：
-        // 1. 优先使用step中明确指定的方法类型（使用类型断言访问explicitMethodType）
-        // 2. 如果没有明确指定，则使用全局methodType状态
+        // 添加状态检查，确保在选择方法时清除所有可能干扰的状态标志
+        localStorage.setItem("brewingNoteInProgress", "false");
+
+        // 确定使用哪种方法类型
         const effectiveMethodType = (step as ExtendedStep)?.explicitMethodType || methodType;
 
         // 将正确的参数传递给 handleMethodSelect
-        await handleMethodSelect(selectedEquipment || "", index, effectiveMethodType, step);
-    }, [handleMethodSelect, isCoffeeBrewed, setIsCoffeeBrewed, selectedEquipment, methodType]);
-
-    // 处理冲煮完成后自动切换到笔记页面
-    useEffect(() => {
-        // 只有在冲煮刚刚完成且没有自动跳转过的情况下才执行自动跳转
-        if (showComplete && activeMainTab === '冲煮' && activeBrewingStep === 'brewing' && !hasAutoNavigatedToNotes) {
-            // 添加延迟，等待音效播放完成
-            const timer = setTimeout(() => {
-                // 使用统一导航函数而不是直接设置状态
-                navigateToStep('notes', { force: true });
-                // 标记已经自动跳转过
-                setHasAutoNavigatedToNotes(true);
-            }, 1000); // 延迟1秒，确保音效和触感反馈都完成
-
-            return () => clearTimeout(timer);
+        const selectedMethod = await handleMethodSelect(selectedEquipment || "", index, effectiveMethodType, step);
+        
+        // 检查是否从记录表单返回后选择方法
+        const wasInNoteForm = localStorage.getItem("wasInNoteForm") === "true";
+        if (wasInNoteForm) {
+            // 清除标记
+            localStorage.setItem("wasInNoteForm", "false");
+            
+            // 如果方法选择成功，确保强制更新UI
+            if (selectedMethod) {
+                // 触发一个事件，通知其他组件已选择方法并且是从笔记表单返回的
+                window.dispatchEvent(new CustomEvent('brewing:methodSelected', {
+                    detail: { method: selectedMethod, fromNoteForm: true }
+                }));
+                
+                // 清理状态，确保不会有干扰
+                setIsCoffeeBrewed(false);
+                setShowComplete(false);
+                
+                // 强制切换到注水步骤
+                navigateToStep('brewing', {
+                    force: true,
+                    preserveMethod: true,
+                    preserveEquipment: true
+                });
+                
+                // 确保显示计时器，设置短延迟以确保DOM更新完成
+                setTimeout(() => {
+                    // 重要：再次确认我们在注水步骤
+                    setActiveBrewingStep('brewing');
+                    
+                    // 确保参数栏显示正确
+                    updateParameterInfo(
+                        "brewing",
+                        selectedEquipment || "",
+                        selectedMethod,
+                        equipmentList,
+                        customEquipments
+                    );
+                    
+                    console.log('选择方法后强制更新UI完成');
+                }, 150);
+            }
         }
-    }, [showComplete, activeMainTab, activeBrewingStep, navigateToStep, hasAutoNavigatedToNotes]);
+        
+        return selectedMethod;
+    }, [handleMethodSelect, isCoffeeBrewed, setIsCoffeeBrewed, setShowComplete, selectedEquipment, methodType, navigateToStep, activeBrewingStep, setActiveBrewingStep, customEquipments]);
 
-    // 处理主标签切换
+    // 处理主标签点击
     const handleMainTabClick = (tab: MainTabType) => {
-        // 如果点击的是当前激活的主标签，不执行任何操作
-        if (tab === activeMainTab) {
-            return;
-        }
+        // 保存前一个标签
+        prevMainTabRef.current = activeMainTab;
 
-        // 更新主标签
+        // 如果已经在选中的标签，不做任何操作
+        if (activeMainTab === tab) return;
+
+        // 设置新的标签
         setActiveMainTab(tab);
+
+        // 如果是冲煮标签
+        if (tab === '冲煮') {
+            // 关闭历史记录
+            setShowHistory(false);
+            // 不论是否有咖啡豆，都从方案步骤开始
+            setActiveBrewingStep('method');
+        }
+        // 如果是笔记标签
+        else if (tab === '笔记') {
+            setShowHistory(true);
+        }
     };
 
     const [showOnboarding, setShowOnboarding] = useState(false)
@@ -829,12 +972,12 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                     // 执行一次完整的状态重置
                     resetBrewingState(false);
 
-                    // 使用统一导航函数确保切换到器具步骤
-                    navigateToStep('equipment', { resetParams: true });
+                    // 使用统一导航函数确保切换到方案步骤
+                    navigateToStep('method', { resetParams: true });
 
                     // 延迟再次确认步骤，确保UI更新正确
                     setTimeout(() => {
-                        navigateToStep('equipment', { resetParams: true });
+                        setActiveBrewingStep('method');
                     }, 100);
                 }
             }
@@ -871,9 +1014,7 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
 
             // 特殊处理：当从无到有（首次添加咖啡豆）且在咖啡豆标签页时
             if (e.detail.isFirstBean && activeMainTab === '咖啡豆') {
-                // 不自动切换标签页，但记录状态，以便返回到冲煮页面时从咖啡豆步骤开始
-                // 通过设置一个标记，等用户手动切换回冲煮页面时处理
-                localStorage.setItem('shouldStartFromCoffeeBeanStep', 'true');
+                // 不再需要设置咖啡豆步骤标志，直接返回冲煮页面时会显示方案步骤
             }
 
             // 特殊处理：删除最后一个咖啡豆的情况
@@ -883,8 +1024,8 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 setSelectedCoffeeBeanData(null);
 
                 // 无论当前在哪个页面，立即修正冲煮页面状态
-                setActiveBrewingStep('equipment');
-                setActiveTab('器具');
+                setActiveBrewingStep('method');
+                setActiveTab('方案');
 
                 // 如果在咖啡豆页面，不做任何切换
                 // 如果在冲煮页面，强制刷新内容
@@ -894,8 +1035,8 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                     // 如果是在冲煮流程中，强制重新加载内容
                     setTimeout(() => {
                         // 确保已经设置为器具步骤
-                        setActiveBrewingStep('equipment');
-                        setActiveTab('器具');
+                        setActiveBrewingStep('method');
+                        setActiveTab('方案');
                     }, 100);
                 }
             }
@@ -906,10 +1047,10 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 setSelectedCoffeeBean(null);
                 setSelectedCoffeeBeanData(null);
 
-                // 在冲煮页面时，如果在咖啡豆步骤，则切换到器具步骤
-                if (activeMainTab === '冲煮' && activeBrewingStep === 'coffeeBean') {
-                    setActiveBrewingStep('equipment');
-                    setActiveTab('器具');
+                // 在冲煮页面时，如果在方案步骤，确保保持在方案步骤
+                if (activeMainTab === '冲煮' && activeBrewingStep === 'method') {
+                    setActiveBrewingStep('method');
+                    setActiveTab('方案');
                 }
             }
         };
@@ -931,9 +1072,9 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             if (shouldStartFromCoffeeBeanStep === 'true' && hasCoffeeBeans) {
                 // 重置标记
                 localStorage.removeItem('shouldStartFromCoffeeBeanStep');
-                // 设置步骤为咖啡豆
-                setActiveBrewingStep('coffeeBean');
-                setActiveTab('咖啡豆');
+                // 设置步骤为方案
+                setActiveBrewingStep('method');
+                setActiveTab('方案');
             }
         }
     }, [activeMainTab, hasCoffeeBeans, setActiveBrewingStep, setActiveTab]);
@@ -1064,20 +1205,12 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         // 检查是否有未完成的笔记记录过程
         const brewingNoteInProgress = localStorage.getItem('brewingNoteInProgress');
 
-        // 检查是否是从记录到注水的特殊跳转
-        const fromNotesToBrewing = localStorage.getItem("fromNotesToBrewing");
-
         // 在每次进入冲煮页面时，检查笔记状态
         if (activeMainTab === '冲煮') {
-            // 如果有未保存的笔记或者从记录到注水的特殊跳转，确保状态一致
-            if (brewingNoteInProgress === 'true' || fromNotesToBrewing === 'true') {
+            // 如果有未保存的笔记，确保状态一致
+            if (brewingNoteInProgress === 'true') {
                 // 确保isCoffeeBrewed为true
                 setIsCoffeeBrewed(true);
-
-                // 只有在特殊跳转时才清除标记
-                if (fromNotesToBrewing === 'true') {
-                    localStorage.removeItem('fromNotesToBrewing');
-                }
             }
         }
     }, [activeMainTab, setIsCoffeeBrewed]);
@@ -1297,6 +1430,10 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
     // 添加冲煮笔记表单状态
     const [showNoteFormModal, setShowNoteFormModal] = useState(false)
     const [currentEditingNote, setCurrentEditingNote] = useState<Partial<BrewingNoteData>>({})
+    
+    // 添加简化版笔记模态框状态
+    const [showSimpleNoteModal, setShowSimpleNoteModal] = useState(false)
+    const [simpleNoteData, setSimpleNoteData] = useState<Partial<BrewingNoteData>>({})
 
     // 添加处理函数
     const handleAddNote = () => {
@@ -1318,26 +1455,25 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         setShowNoteFormModal(true);
     };
 
-    // 处理保存冲煮笔记
+    // 简化保存记录的处理函数
     const handleSaveBrewingNote = async (note: BrewingNoteData) => {
         try {
             // 获取现有笔记
             const existingNotesStr = await Storage.get('brewingNotes');
             const existingNotes = existingNotesStr ? JSON.parse(existingNotesStr) : [];
 
-            let updatedNotes;
+            // 处理新笔记保存
             const newNoteId = note.id || Date.now().toString();
-            
-            // 检查是否是真正的现有笔记（有ID并且在现有笔记中能找到）
             const isExistingNote = note.id && existingNotes.some((n: BrewingNoteData) => n.id === note.id);
             
+            let updatedNotes;
             if (isExistingNote) {
                 // 更新现有笔记
                 updatedNotes = existingNotes.map((n: BrewingNoteData) =>
                     n.id === note.id ? note : n
                 );
             } else {
-                // 添加新笔记 - 使用笔记自带的ID或生成新ID
+                // 添加新笔记
                 const newNote = {
                     ...note,
                     id: newNoteId,
@@ -1347,37 +1483,37 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 updatedNotes = [newNote, ...existingNotes];
             }
             
-            // 使用Storage API保存
+            // 保存笔记
             await Storage.set('brewingNotes', JSON.stringify(updatedNotes));
             
-            // 触发自定义事件通知
-            const dataChangeEvent = new CustomEvent('storage:changed', { 
+            // 触发变更事件
+            window.dispatchEvent(new CustomEvent('storage:changed', { 
                 detail: { key: 'brewingNotes', id: newNoteId } 
-            });
-            window.dispatchEvent(dataChangeEvent);
-            
-            // 同时触发customStorageChange事件，确保所有组件都能收到通知
-            const customEvent = new CustomEvent('customStorageChange', {
-                detail: { key: 'brewingNotes' }
-            });
-            window.dispatchEvent(customEvent);
-            
-            // 如果window上有刷新方法，调用它
-            if (window.refreshBrewingNotes) {
-                setTimeout(() => window.refreshBrewingNotes?.(), 50);
-            }
+            }));
 
-            // 关闭表单
+            // 清理状态，确保可以重新选择方案
             setShowNoteFormModal(false);
+            setShowSimpleNoteModal(false);
             setCurrentEditingNote({});
+            setSimpleNoteData({});
+            
+            // 清除记录表单相关状态，防止参数栏混淆
+            localStorage.setItem("brewingNoteInProgress", "false");
+            localStorage.setItem("wasInNoteForm", "true");
+            
+            // 标记笔记已保存
+            setIsNoteSaved(true);
             
             // 切换到笔记选项卡
             setActiveMainTab('笔记');
+            
+            // 发送事件，确保其他组件知道笔记已保存
+            window.dispatchEvent(new CustomEvent('brewing:noteSaved'));
         } catch (error) {
             console.error('保存冲煮笔记失败:', error);
             alert('保存失败，请重试');
         }
-    };
+    }
 
     // 处理保存自定义器具
     const handleSaveEquipment = async (equipment: CustomEquipment, methods?: Method[]) => {
@@ -1455,6 +1591,63 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
         }
     };
 
+    // 监听记录表单关闭事件
+    useEffect(() => {
+        const handleNoteFormClosed = () => {
+            // 确保参数栏状态被重置
+            if (selectedMethod && selectedEquipment) {
+                // 设置短暂延迟以确保DOM更新完成
+                setTimeout(() => {
+                    // 确保当前在方法页面时更新参数栏
+                    if (activeBrewingStep === 'method') {
+                        // 触发参数栏更新
+                        updateParameterInfo(
+                            "method",
+                            selectedEquipment,
+                            selectedMethod as any,
+                            equipmentList,
+                            customEquipments
+                        );
+                    } else if (activeBrewingStep === 'brewing') {
+                        // 如果在注水步骤，也更新参数栏
+                        updateParameterInfo(
+                            "brewing",
+                            selectedEquipment,
+                            selectedMethod as any,
+                            equipmentList,
+                            customEquipments
+                        );
+                    }
+                }, 150);
+            }
+            
+            // 重置笔记相关状态
+            setIsCoffeeBrewed(false);
+            setShowComplete(false);
+        };
+
+        const handleNoteSaved = () => {
+            // 重置冲煮状态
+            setIsCoffeeBrewed(false);
+            setShowComplete(false);
+        };
+
+        // 添加事件监听器
+        window.addEventListener('brewing:noteFormClosed', handleNoteFormClosed);
+        window.addEventListener('brewing:noteSaved', handleNoteSaved);
+
+        // 清理函数
+        return () => {
+            window.removeEventListener('brewing:noteFormClosed', handleNoteFormClosed);
+            window.removeEventListener('brewing:noteSaved', handleNoteSaved);
+        };
+    }, [selectedEquipment, selectedMethod, activeBrewingStep, customEquipments]);
+
+    // 设备分享相关状态
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [sharingEquipment, setSharingEquipment] = useState<CustomEquipment | null>(null);
+    const [sharingMethods, setSharingMethods] = useState<Method[]>([]);
+
     return (
         <div className="flex h-full flex-col overflow-hidden mx-auto max-w-[500px] text-neutral-800 dark:text-neutral-100">
             {/* 使用 NavigationBar 组件替换原有的导航栏 */}
@@ -1474,18 +1667,33 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 handleParamChange={handleParamChangeWrapper}
                 setShowHistory={setShowHistory}
                 setActiveTab={setActiveTab}
-                onTitleDoubleClick={handleTitleDoubleClick}
+                onTitleClick={handleTitleDoubleClick}
                 settings={settings}
-                selectedCoffeeBean={selectedCoffeeBean}
-                hasCoffeeBeans={hasCoffeeBeans}
                 navigateToStep={navigateToStep}
-                onStepClick={handleBrewingStepClickWrapper}
+                // 添加设备选择栏相关属性
+                customEquipments={customEquipments}
+                onSelectEquipment={handleEquipmentSelect}
+                onAddEquipment={() => setShowEquipmentForm(true)}
+                onEditEquipment={(equipment) => {
+                    setEditingEquipment(equipment);
+                    setShowEquipmentForm(true);
+                }}
+                onDeleteEquipment={handleDeleteEquipment}
+                onShareEquipment={(equipment) => {
+                    // 为每个设备获取相关的方法
+                    const methods = equipment.id ? customMethods[equipment.id] || [] : [];
+                    // 设置分享模态框状态
+                    setSharingEquipment(equipment);
+                    setSharingMethods(methods);
+                    setShowShareModal(true);
+                }}
+                showEquipmentBar={activeMainTab === '冲煮' && activeBrewingStep === 'method'}
             />
 
             {/* 内容区域 */}
             {activeMainTab === '冲煮' && (
                 <div
-                    className="h-full overflow-y-auto space-y-5 p-6"
+                    className="h-full overflow-y-auto space-y-5 pt-6"
                 >
                     <TabContent
                         activeMainTab={activeMainTab}
@@ -1526,6 +1734,7 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                         handleSaveEquipment={handleSaveEquipment}
                         handleDeleteEquipment={handleDeleteEquipment}
                         setShowEquipmentImportForm={setShowEquipmentImportForm}
+                        hideEquipmentBar={activeMainTab === '冲煮' && activeBrewingStep === 'method'}
                     />
                 </div>
             )}
@@ -1567,6 +1776,9 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             {activeMainTab === '冲煮' && activeBrewingStep === 'brewing' && currentBrewingMethod && !showHistory && (
                 <BrewingTimer
                     currentBrewingMethod={currentBrewingMethod}
+                    onTimerComplete={() => {
+                        // 这里不需要做任何事情，移除额外的逻辑
+                    }}
                     onStatusChange={({ isRunning }) => {
                         // 使用事件而不是直接更新状态
                         const event = new CustomEvent('brewing:timerStatus', {
@@ -1589,6 +1801,11 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                         });
                         window.dispatchEvent(event);
                     }}
+                    onComplete={(isComplete) => {
+                        if (isComplete) {
+                            // 这里不需要额外触发事件，BrewingTimer内部会触发brewing:complete事件
+                        }
+                    }}
                     onCountdownChange={(time) => {
                         // 避免直接调用事件分发，改用 setTimeout
                         setTimeout(() => {
@@ -1598,19 +1815,43 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                             window.dispatchEvent(event);
                         }, 0);
                     }}
-                    onComplete={(isComplete) => {
-                        if (isComplete) {
-                            // 触发一个事件而不是直接更新状态
-                            const event = new CustomEvent('brewing:complete');
-                            window.dispatchEvent(event);
-                        }
-                    }}
-                    onTimerComplete={() => {
-                        // 冲煮完成后的处理，确保显示笔记表单
-                        // 这里不需要额外设置，因为BrewingTimer组件内部已经处理了显示笔记表单的逻辑
-                    }}
                     onExpandedStagesChange={(stages) => {
                         expandedStagesRef.current = stages;
+                    }}
+                    onShowNoteForm={(noteData) => {
+                        // 当从BrewingTimer传递笔记数据时，显示记录表单
+                        if (noteData && Object.keys(noteData).length > 0) {
+                            // 重要: 先清理所有可能导致模态框冲突的状态
+                            setShowImportBeanForm(false);
+                            setShowEquipmentImportForm(false);
+                            setShowEquipmentForm(false);
+                            setShowCustomForm(false);
+                            setShowImportForm(false);
+                            
+                            // 确保标记冲煮完成状态
+                            if (noteData.isFromBrewingComplete) {
+                                localStorage.setItem("brewingNoteInProgress", "true");
+                                
+                                // 使用简化版笔记模态框处理冲煮完成后的笔记记录
+                                setSimpleNoteData(noteData);
+                                setShowSimpleNoteModal(true);
+                            } else {
+                                // 使用多步骤表单处理常规笔记记录
+                                setCurrentEditingNote({
+                                    ...noteData,
+                                    modalType: "brewing-note" // 确保类型正确
+                                });
+                                setShowNoteFormModal(true);
+                            }
+                        } else if (Object.keys(noteData || {}).length === 0) {
+                            // 如果传入空对象，说明是关闭模态框的请求
+                            setShowNoteFormModal(false);
+                            setShowSimpleNoteModal(false);
+                            setCurrentEditingNote({});
+                            setSimpleNoteData({});
+                            // 清除笔记表单相关状态
+                            localStorage.setItem("brewingNoteInProgress", "false");
+                        }
                     }}
                     settings={settings}
                     selectedEquipment={selectedEquipment}
@@ -1681,6 +1922,25 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 onClose={() => {
                     setShowNoteFormModal(false);
                     setCurrentEditingNote({});
+                    // 清除笔记表单相关状态
+                    localStorage.setItem("brewingNoteInProgress", "false");
+                    localStorage.setItem("wasInNoteForm", "true"); // 标记刚从表单返回
+                }}
+                skipToLastStep={currentEditingNote?.isFromBrewingComplete === true}
+            />
+
+            {/* 简化版笔记模态框组件 - 用于冲煮完成后 */}
+            <SimpleNoteModal
+                key="simple-note-modal"
+                showForm={showSimpleNoteModal}
+                initialNote={simpleNoteData}
+                onSave={handleSaveBrewingNote}
+                onClose={() => {
+                    setShowSimpleNoteModal(false);
+                    setSimpleNoteData({});
+                    // 清除笔记表单相关状态
+                    localStorage.setItem("brewingNoteInProgress", "false");
+                    localStorage.setItem("wasInNoteForm", "true"); // 标记刚从表单返回
                 }}
             />
 
@@ -1702,6 +1962,7 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 }}
                 onSave={handleSaveEquipment}
                 editingEquipment={editingEquipment}
+                onImport={() => setShowEquipmentImportForm(true)}
             />
 
             {/* 添加器具导入模态框 */}
@@ -1711,6 +1972,16 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 onClose={() => setShowEquipmentImportForm(false)}
                 existingEquipments={customEquipments}
             />
+
+            {/* 设备分享模态框组件 */}
+            {sharingEquipment && (
+                <EquipmentShareModal
+                    isOpen={showShareModal}
+                    onClose={() => setShowShareModal(false)}
+                    equipment={sharingEquipment}
+                    methods={sharingMethods}
+                />
+            )}
 
             {/* 引导组件 */}
             {

@@ -291,7 +291,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                                 
                                 <button
                                     onClick={() => onBeanTypeChange?.('espresso')}
-                                    className={`pb-1.5 mr-2 text-[11px] whitespace-nowrap relative ${selectedBeanType === 'espresso' ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                    className={`pb-1.5 mr-2 text-xs whitespace-nowrap relative ${selectedBeanType === 'espresso' ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                 >
                                     <span className="relative">意式豆</span>
                                     {selectedBeanType === 'espresso' && (
@@ -301,7 +301,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                                 
                                 <button
                                     onClick={() => onBeanTypeChange?.('filter')}
-                                    className={`pb-1.5 mx-2 text-[11px] whitespace-nowrap relative ${selectedBeanType === 'filter' ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                    className={`pb-1.5 mx-2 text-xs whitespace-nowrap relative ${selectedBeanType === 'filter' ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                 >
                                     <span className="relative">手冲豆</span>
                                     {selectedBeanType === 'filter' && (
@@ -311,7 +311,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
 
                                 <button
                                     onClick={() => selectedVariety !== null && onVarietyClick?.(null)}
-                                    className={`pb-1.5 mx-2 text-[11px] whitespace-nowrap relative ${selectedVariety === null ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                    className={`pb-1.5 mx-2 text-xs whitespace-nowrap relative ${selectedVariety === null ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                 >
                                     <span className="relative">全部豆种</span>
                                     {selectedVariety === null && (
@@ -325,7 +325,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                                     <button
                                         key={variety}
                                         onClick={() => selectedVariety !== variety && onVarietyClick?.(variety)}
-                                        className={`pb-1.5 mx-2 text-[11px] whitespace-nowrap relative ${selectedVariety === variety ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                        className={`pb-1.5 mx-2 text-xs whitespace-nowrap relative ${selectedVariety === variety ? 'text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}
                                     >
                                         <span className="relative">{variety}</span>
                                         {selectedVariety === variety && (
@@ -344,7 +344,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                                         onChange={handleSearchChange}
                                         onKeyDown={handleSearchKeyDown}
                                         placeholder="输入咖啡豆名称..."
-                                        className="w-full pr-2 text-[11px] bg-transparent border-none outline-none text-neutral-800 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500"
+                                        className="w-full pr-2 text-xs bg-transparent border-none outline-none text-neutral-800 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500"
                                         autoComplete="off"
                                     />
                                 </div>
@@ -362,7 +362,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                             <div className="absolute right-6 top-0 bottom-0 flex items-center bg-neutral-50 dark:bg-neutral-900 pl-1 before:content-[''] before:absolute before:left-[-20px] before:top-0 before:bottom-0 before:w-5 before:bg-gradient-to-r before:from-transparent before:to-neutral-50 dark:before:to-neutral-900 before:pointer-events-none">
                                 <button
                                     onClick={onToggleShowEmptyBeans}
-                                    className={`pb-1.5 text-[11px] whitespace-nowrap relative ${showEmptyBeans ? 'text-neutral-800 dark:text-neutral-100 font-normal' : 'text-neutral-600 dark:text-neutral-400'}`}
+                                    className={`pb-1.5 text-xs whitespace-nowrap relative ${showEmptyBeans ? 'text-neutral-800 dark:text-neutral-100 font-normal' : 'text-neutral-600 dark:text-neutral-400'}`}
                                 >
                                     <span className="relative">已用完</span>
                                     {showEmptyBeans && (
@@ -371,7 +371,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({
                                 </button>
                                 <button
                                     onClick={handleSearchClick}
-                                    className="ml-3 pb-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center whitespace-nowrap"
+                                    className="ml-3 pb-1.5 text-xs text-neutral-600 dark:text-neutral-400 flex items-center whitespace-nowrap"
                                 >
                                     <span className="relative">找豆子</span>
                                 </button>

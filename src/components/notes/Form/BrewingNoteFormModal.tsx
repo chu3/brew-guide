@@ -55,11 +55,39 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
 
   // 处理关闭
   const handleClose = () => {
+    // 清除记录表单状态标记，允许参数栏更新
+    localStorage.setItem("brewingNoteInProgress", "false");
+    
+    // 设置标记，表示刚从记录表单返回，帮助后续流程中的状态管理
+    localStorage.setItem("wasInNoteForm", "true");
+    
+    // 触发记录表单关闭事件，通知其他组件更新状态
+    window.dispatchEvent(new CustomEvent('brewing:noteFormClosed'));
+    
     setSelectedCoffeeBean(null)
     setSelectedEquipment('')
     setSelectedMethod('')
+    setCurrentStep(0) // 重置步骤，确保下次打开从第一步开始
     onClose()
   }
+
+  // 当模态框显示时设置标记
+  useEffect(() => {
+    if (showForm) {
+      // 设置标记，表示正在显示记录表单，防止参数栏被更新
+      localStorage.setItem("brewingNoteInProgress", "true");
+      
+      // 如果是从冲煮完成来的，特别标记
+      if (initialNote?.isFromBrewingComplete) {
+        // 如果是从冲煮完成来的且skipToLastStep为false，强制跳到最后一步
+        if (!skipToLastStep) {
+          setTimeout(() => {
+            setCurrentStep(3); // 跳转到笔记表单步骤
+          }, 50);
+        }
+      }
+    }
+  }, [showForm, initialNote, skipToLastStep]);
 
   // 加载咖啡豆列表
   useEffect(() => {

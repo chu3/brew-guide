@@ -17,6 +17,7 @@ import MethodShareModal from '@/components/method/share/MethodShareModal';
 import { saveCustomMethod } from '@/lib/managers/customMethods';
 import { Search, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import EquipmentCategoryBar from '@/components/method/forms/EquipmentCategoryBar';
 
 // 扩展Step类型，增加固定方案所需的字段
 interface Step extends BaseStep {
@@ -92,6 +93,7 @@ interface TabContentProps {
     handleDeleteEquipment: (equipment: CustomEquipment) => Promise<void>;
     _onShareMethod?: (method: Method) => void;
     setShowEquipmentImportForm: (show: boolean) => void;
+    hideEquipmentBar?: boolean;
 }
 
 const TabContent: React.FC<TabContentProps> = ({
@@ -134,6 +136,7 @@ const TabContent: React.FC<TabContentProps> = ({
     handleDeleteEquipment,
     _onShareMethod,
     setShowEquipmentImportForm,
+    hideEquipmentBar,
 }) => {
     // 笔记表单状态
     const [noteSaved, setNoteSaved] = useState(false);
@@ -188,7 +191,6 @@ const TabContent: React.FC<TabContentProps> = ({
 
             if (resetBrewingState) {
                 resetBrewingState(false);
-                localStorage.setItem('shouldStartFromCoffeeBeanStep', 'true');
             }
         } catch {
             alert('保存失败，请重试');
@@ -201,7 +203,6 @@ const TabContent: React.FC<TabContentProps> = ({
             setActiveMainTab('笔记');
             if (resetBrewingState) {
                 resetBrewingState(false);
-                localStorage.setItem('shouldStartFromCoffeeBeanStep', 'true');
             }
         } else {
             localStorage.setItem('brewingNoteInProgress', 'false');
@@ -457,6 +458,25 @@ const TabContent: React.FC<TabContentProps> = ({
     return (
         <>
             <div className="space-y-4 content-area">
+                {activeTab === '方案' && !hideEquipmentBar && (
+                    <EquipmentCategoryBar
+                        equipmentList={equipmentList}
+                        customEquipments={customEquipments}
+                        selectedEquipment={selectedEquipment}
+                        onSelect={onEquipmentSelect}
+                        settings={settings}
+                        onAddEquipment={() => {
+                            setEditingEquipment(undefined);
+                            setShowEquipmentForm(true);
+                        }}
+                        onEditEquipment={(equipment) => {
+                            setEditingEquipment(equipment);
+                            setShowEquipmentForm(true);
+                        }}
+                        onDeleteEquipment={handleDeleteEquipment}
+                        onShareEquipment={handleShareEquipment}
+                    />
+                )}
                 {showEmptyMethodsMessage ? (
                     <div className="flex h-32 items-center justify-center text-[10px] tracking-widest text-neutral-600 dark:text-neutral-400">
                         [ 当前器具暂无自定义方案，请点击下方按钮添加 ]

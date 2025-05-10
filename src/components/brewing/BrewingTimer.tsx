@@ -66,6 +66,7 @@ interface BrewingTimerProps {
       originalIndex: number;
     }[]
   ) => void;
+  onShowNoteForm?: (data: Partial<BrewingNoteData>) => void;
   settings: SettingsOptions;
   selectedEquipment: string | null;
   isCoffeeBrewed?: boolean;
@@ -80,6 +81,7 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
   onComplete,
   onCountdownChange,
   onExpandedStagesChange,
+  onShowNoteForm,
   settings,
   selectedEquipment,
   isCoffeeBrewed,
@@ -109,16 +111,8 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
   const audioState = useRef<AudioState>(createInitialAudioState());
 
   const methodStagesRef = useRef(currentBrewingMethod?.params.stages || []);
-  const [showNoteForm, setShowNoteForm] = useState(false);
 
-  // 添加一个状态来保存笔记表单的初始内容
-  const [noteFormInitialData, setNoteFormInitialData] = useState<
-    | (Partial<BrewingNoteData> & {
-        coffeeBean?: CoffeeBean | null;
-      })
-    | null
-  >(null);
-
+  // 保留必要的状态但移除笔记表单状态
   const [showSkipButton, setShowSkipButton] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [localLayoutSettings, setLocalLayoutSettings] = useState<LayoutSettings>(layoutSettings);
@@ -138,10 +132,7 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
   const handleLayoutChange = useCallback((newSettings: LayoutSettings) => {
     // 首先更新本地状态
     setLocalLayoutSettings(newSettings);
-    
-    // 记录日志
-    console.log('发送布局设置变更:', newSettings);
-    
+
     // 然后派发事件，通知其他组件
     window.dispatchEvent(
       new CustomEvent("brewing:layoutChange", {
@@ -175,7 +166,6 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
           const newSettings = { ...currentSettings, showFlowRate };
           // 保存回存储
           await Storage.set('brewGuideSettings', JSON.stringify(newSettings));
-          console.log('流速设置已保存', showFlowRate);
         }
       } catch (error) {
         console.error('保存流速设置失败', error);
@@ -353,18 +343,8 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
     // 发送冲煮完成事件
     window.dispatchEvent(new Event("brewing:complete"));
 
-    // 构造咖啡豆信息
-    const coffeeBeanInfo = {
-      name: "",
-      roastLevel: "中度烘焙",
-      roastDate: "",
-    };
-
     if (currentBrewingMethod) {
-      // 在冲煮完成时请求最新的参数
-      window.dispatchEvent(new CustomEvent("brewing:getParams"));
-
-      // 初始化笔记表单数据
+      // 构造基本笔记表单数据，简化参数，避免状态不必要的传递
       const initialData: Partial<BrewingNoteData> = {
         equipment: selectedEquipment || "",
         method: currentBrewingMethod.name,
@@ -376,8 +356,12 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
           grindSize: currentBrewingMethod.params.grindSize || "",
           temp: currentBrewingMethod.params.temp || "",
         },
-        coffeeBeanInfo: coffeeBeanInfo,
-        rating: 3, // 默认评分
+        coffeeBeanInfo: {
+          name: "",
+          roastLevel: "中度烘焙",
+          roastDate: "",
+        },
+        rating: 3,
         taste: {
           acidity: 3,
           sweetness: 3,
@@ -385,20 +369,29 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
           body: 3,
         },
         coffeeBean: null,
+        // 添加标记，确保此数据用于冲煮完成后的笔记表单
+        isFromBrewingComplete: true,
+        modalType: "brewing-note",
       };
 
-      setNoteFormInitialData(initialData);
+      // 设置本地存储状态，确保应用知道当前处于冲煮完成记录阶段
+      localStorage.setItem("brewingNoteInProgress", "true");
+      // 清除可能导致状态混淆的标志
+      localStorage.setItem("wasInNoteForm", "false");
+
+      // 使用外部传入的回调函数显示记录表单
+      if (onShowNoteForm) {
+        onShowNoteForm(initialData);
+      }
     }
   }, [
     clearTimerAndStates,
-    onComplete,
-    onTimerComplete,
     playSoundEffect,
     currentTime,
-    isCompleted,
     triggerHaptic,
     currentBrewingMethod,
     selectedEquipment,
+    onShowNoteForm,
   ]);
 
   // 处理主计时器的启动
@@ -538,53 +531,35 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
   // 修改保存笔记函数，添加保存成功反馈
   const handleSaveNote = useCallback(async (note: BrewingNoteData) => {
     try {
-      // 从Storage获取现有笔记
-      const existingNotesStr = await Storage.get("brewingNotes");
-      const existingNotes = existingNotesStr
-        ? JSON.parse(existingNotesStr)
-        : [];
+        // 从Storage获取现有笔记
+        const existingNotesStr = await Storage.get("brewingNotes");
+        const existingNotes = existingNotesStr
+            ? JSON.parse(existingNotesStr)
+            : [];
 
-      // 创建新笔记 - 确保不保存完整的coffeeBean对象
-      const newNote = {
-        ...note,
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-      };
-      
-      // 如果存在coffeeBean字段，移除它
-      if ('coffeeBean' in newNote) {
-        delete newNote.coffeeBean;
-      }
+        // 构建新笔记对象
+        const newNote = {
+            ...note,
+            id: note.id || Date.now().toString(),
+            timestamp: note.timestamp || Date.now(),
+        };
 
-      // 将新笔记添加到列表开头
-      const updatedNotes = [newNote, ...existingNotes];
+        // 添加到列表开头（最新的在前面）
+        const updatedNotes = [newNote, ...existingNotes];
+        await Storage.set("brewingNotes", JSON.stringify(updatedNotes));
 
-      // 存储更新后的笔记列表
-      await Storage.set("brewingNotes", JSON.stringify(updatedNotes));
+        // 设置笔记已保存标记
+        localStorage.setItem("brewingNoteInProgress", "false");
 
-      // 触发自定义事件通知数据变更
-      const storageEvent = new CustomEvent('storage:changed', {
-        detail: { key: 'brewingNotes', id: newNote.id }
-      });
-      window.dispatchEvent(storageEvent);
-      
-      // 同时触发customStorageChange事件，确保所有组件都能收到通知
-      const customEvent = new CustomEvent('customStorageChange', {
-        detail: { key: 'brewingNotes' }
-      });
-      window.dispatchEvent(customEvent);
-
-      // 设置笔记已保存标记
-      localStorage.setItem("brewingNoteInProgress", "false");
-      // 清空表单初始数据，表示已完全保存
-      setNoteFormInitialData(null);
-
-      // 关闭笔记表单
-      setShowNoteForm(false);
+        // 关闭笔记表单
+        if (onShowNoteForm) {
+            // 传递空对象而不是null，避免类型错误
+            onShowNoteForm({});
+        }
     } catch {
-      alert("保存失败，请重试");
+        alert("保存失败，请重试");
     }
-  }, []);
+  }, [onShowNoteForm]);
 
   useEffect(() => {
     if (
@@ -628,10 +603,6 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
 
     // 清除笔记进度标记和保存的表单数据
     localStorage.setItem("brewingNoteInProgress", "false");
-    setNoteFormInitialData(null);
-
-    // 关闭笔记表单(如果打开的话)
-    setShowNoteForm(false);
 
     // 触发一个事件通知其他组件重置
     const event = new CustomEvent("brewing:reset");
@@ -738,70 +709,9 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
         } | null;
       }>
     ) => {
-      if (e.detail && noteFormInitialData) {
-        // 标准化烘焙度值，确保与下拉列表选项匹配
-        const normalizeRoastLevel = (roastLevel?: string): string => {
-          if (!roastLevel) return "中度烘焙";
-
-          // 如果已经是完整格式，直接返回
-          if (roastLevel.endsWith("烘焙")) return roastLevel;
-
-          // 否则添加"烘焙"后缀
-          if (roastLevel === "极浅") return "极浅烘焙";
-          if (roastLevel === "浅度") return "浅度烘焙";
-          if (roastLevel === "中浅") return "中浅烘焙";
-          if (roastLevel === "中度") return "中度烘焙";
-          if (roastLevel === "中深") return "中深烘焙";
-          if (roastLevel === "深度") return "深度烘焙";
-
-          // 尝试匹配部分字符串
-          if (roastLevel.includes("极浅")) return "极浅烘焙";
-          if (roastLevel.includes("浅")) return "浅度烘焙";
-          if (roastLevel.includes("中浅")) return "中浅烘焙";
-          if (roastLevel.includes("中深")) return "中深烘焙";
-          if (roastLevel.includes("深")) return "深度烘焙";
-          if (roastLevel.includes("中")) return "中度烘焙";
-
-          // 默认返回中度烘焙
-          return "中度烘焙";
-        };
-
-        // 更新笔记表单数据
-        const updatedData: Partial<BrewingNoteData> = {
-          ...noteFormInitialData,
-        };
-
-        // 更新参数信息
-        if (e.detail.params) {
-          updatedData.params = {
-            coffee:
-              e.detail.params.coffee ||
-              noteFormInitialData.params?.coffee ||
-              "",
-            water:
-              e.detail.params.water || noteFormInitialData.params?.water || "",
-            ratio:
-              e.detail.params.ratio || noteFormInitialData.params?.ratio || "",
-            grindSize:
-              e.detail.params.grindSize ||
-              noteFormInitialData.params?.grindSize ||
-              "",
-            temp:
-              e.detail.params.temp || noteFormInitialData.params?.temp || "",
-          };
-        }
-
-        // 更新咖啡豆信息
-        if (e.detail.coffeeBean) {
-          // 移除完整咖啡豆对象的保存，只保留必要的信息
-          updatedData.coffeeBeanInfo = {
-            name: e.detail.coffeeBean.name || "",
-            roastLevel: normalizeRoastLevel(e.detail.coffeeBean.roastLevel),
-            roastDate: e.detail.coffeeBean.roastDate || "",
-          };
-        }
-
-        setNoteFormInitialData(updatedData);
+      // 只有在有当前方法时进行更新
+      if (currentBrewingMethod && isCompleted) {
+        // 忽略更新noteFormInitialData的代码，因为我们已移除此状态
       }
     };
 
@@ -816,7 +726,7 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
         handleParamsUpdated as EventListener
       );
     };
-  }, [noteFormInitialData]);
+  }, [currentBrewingMethod, isCompleted]);
 
   // 触感反馈在阶段变化时
   useEffect(() => {
@@ -830,40 +740,6 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
     }
     lastStageRef.current = currentStage;
   }, [currentTime, getCurrentStageAndUpdateIndex, isRunning, triggerHaptic]);
-
-  // 处理外部显示和关闭笔记表单的事件
-  useEffect(() => {
-    const handleShowNoteForm = () => {
-      setShowNoteForm(true);
-    };
-
-    const handleCloseNoteForm = (e: CustomEvent<{ force?: boolean }>) => {
-      // 强制关闭时无需询问
-      if (e.detail?.force) {
-        setShowNoteForm(false);
-        return;
-      }
-
-      // 常规关闭可添加确认逻辑
-      setShowNoteForm(false);
-    };
-
-    // 添加事件监听
-    window.addEventListener("showBrewingNoteForm", handleShowNoteForm);
-    window.addEventListener(
-      "closeBrewingNoteForm",
-      handleCloseNoteForm as EventListener
-    );
-
-    return () => {
-      // 移除事件监听
-      window.removeEventListener("showBrewingNoteForm", handleShowNoteForm);
-      window.removeEventListener(
-        "closeBrewingNoteForm",
-        handleCloseNoteForm as EventListener
-      );
-    };
-  }, []);
 
   // 添加监听methodSelected事件，确保在导入后正确更新参数
   useEffect(() => {
@@ -1009,6 +885,44 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
       cleanupScreenWake();
     };
   }, [isRunning, hasStartedOnce]);
+
+  // 添加监听brewing:methodSelected事件
+  useEffect(() => {
+    const handleBrewingMethodSelected = (
+      e: CustomEvent<{
+        method: any; 
+        fromNoteForm: boolean;
+      }>
+    ) => {
+      // 如果是从笔记表单返回后选择的方法，需要特殊处理
+      if (e.detail.fromNoteForm) {
+        // 确保所有状态被重置
+        resetTimer();
+        setIsCompleted(false);
+        setShowComplete(false);
+        setIsRunning(false);
+        
+        // 重新处理扩展阶段
+        expandedStagesRef.current = processExpansion();
+        
+        // 通知其他组件计时器已准备就绪
+        window.dispatchEvent(new CustomEvent('brewing:timerReady'));
+      }
+    };
+
+    // 添加自定义事件监听器
+    window.addEventListener(
+      "brewing:methodSelected",
+      handleBrewingMethodSelected as EventListener
+    );
+
+    return () => {
+      window.removeEventListener(
+        "brewing:methodSelected",
+        handleBrewingMethodSelected as EventListener
+      );
+    };
+  }, [resetTimer, processExpansion]);
 
   if (!currentBrewingMethod) return null;
 
@@ -1376,7 +1290,7 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.26, ease: [0.4, 0, 0.2, 1] }}
-                    className="relative mb-3"
+                    className="relative pb-3"
                   >
                     {expandedStagesRef.current.map((stage) => {
                       const totalTime =
@@ -1741,51 +1655,6 @@ const BrewingTimer: React.FC<BrewingTimerProps> = ({
           </div>
         </div>
       </div>
-      <AnimatePresence mode="wait">
-        {showNoteForm && currentBrewingMethod && (
-          <motion.div
-            key="note-form"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.26 }}
-            className="absolute inset-0 bg-neutral-50 dark:bg-neutral-900"
-            style={{
-              willChange: "transform, opacity",
-              zIndex: 50,
-              transform: "translateZ(0)",
-            }}
-          >
-            <BrewingNoteForm
-              id="brewingNoteForm"
-              isOpen={showNoteForm}
-              onClose={() => {
-                setShowNoteForm(false);
-                // 注意：这里不清除brewingNoteInProgress，保留未完成状态
-                // 允许用户稍后返回继续填写
-              }}
-              onSave={handleSaveNote}
-              initialData={
-                noteFormInitialData || {
-                  equipment: selectedEquipment
-                    ? equipmentList.find((e) => e.id === selectedEquipment)
-                        ?.name || selectedEquipment
-                    : "",
-                  method: currentBrewingMethod?.name || "",
-                  params: {
-                    coffee: currentBrewingMethod?.params?.coffee || "",
-                    water: currentBrewingMethod?.params?.water || "",
-                    ratio: currentBrewingMethod?.params?.ratio || "",
-                    grindSize: currentBrewingMethod?.params?.grindSize || "",
-                    temp: currentBrewingMethod?.params?.temp || "",
-                  },
-                  totalTime: currentTime,
-                }
-              }
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 };

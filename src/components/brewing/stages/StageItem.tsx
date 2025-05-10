@@ -212,7 +212,7 @@ const StageItem: React.FC<StageItemProps> = ({
         }
 
         return (
-            <div className={`group relative border-l ${isWaitingStage ? 'border-dashed' : ''} border-neutral-200 pl-6 dark:border-neutral-800 ${textStyle}`}>
+            <div className={`group relative border-l ${isWaitingStage ? 'border-dashed' : ''} border-neutral-200 pl-6 mx-6 dark:border-neutral-800 ${textStyle}`}>
                 {isCurrentStage && (
                     <motion.div
                         className={`absolute -left-px top-0 h-full w-px ${isWaitingStage ? 'bg-neutral-600 dark:bg-neutral-400' : 'bg-neutral-800 dark:bg-white'}`}

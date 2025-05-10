@@ -197,12 +197,6 @@ export function useMethodSelector({
 									method: method.name,
 									params: params,
 								});
-
-								// 强制再次设置标记，确保在任何情况下都能返回到方案页面
-								localStorage.setItem(
-									"fromMethodToBrewing",
-									"true"
-								);
 							} catch (error) {
 								console.error("更新参数栏时出错:", error);
 							}
@@ -211,19 +205,6 @@ export function useMethodSelector({
 						setTimeout(() => {
 							updateParams();
 						}, 50);
-
-						// 增加另一个延迟检查，确保标记不被其他操作清除
-						setTimeout(() => {
-							if (
-								localStorage.getItem("fromMethodToBrewing") !==
-								"true"
-							) {
-								localStorage.setItem(
-									"fromMethodToBrewing",
-									"true"
-								);
-							}
-						}, 300);
 
 						// 移除这里的扣减逻辑，在实际冲煮完成后再扣减
 						// 只记录选择的咖啡豆和方案信息，但不立即扣减咖啡豆
@@ -321,6 +302,21 @@ export function useMethodSelector({
 					return methodCopy;
 				} else {
 					// 没有自定义参数，使用原始方法
+					// 检查是否从记录模态框返回后选择方法
+					const wasInNoteForm = localStorage.getItem("wasInNoteForm") === "true";
+					if (wasInNoteForm) {
+						// 清除标记
+						localStorage.setItem("wasInNoteForm", "false");
+						// 强制触发一次额外的状态更新，确保UI正确刷新
+						setTimeout(() => {
+							window.dispatchEvent(new CustomEvent('brewing:methodSelected', {
+								detail: { 
+									method: method,
+									fromNoteForm: true
+								}
+							}));
+						}, 10);
+					}
 					await processSelectedMethod(method);
 					return method;
 				}
