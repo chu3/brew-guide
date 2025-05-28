@@ -1,7 +1,6 @@
 import React from 'react';
 import { SettingsOptions } from '../../settings/Settings';
-import hapticsUtils from '@/lib/ui/haptics';
-import BottomActionBar from '../../layout/BottomActionBar';
+// import hapticsUtils from '@/lib/ui/haptics';
 
 interface MethodTypeSelectorProps {
     methodType: 'common' | 'custom';
@@ -12,43 +11,19 @@ interface MethodTypeSelectorProps {
 }
 
 const MethodTypeSelector: React.FC<MethodTypeSelectorProps> = ({
-    methodType,
-    settings,
-    onSelectMethodType,
-    hideSelector = false,
-    showInTabContent = true
+    methodType: _methodType,
+    settings: _settings,
+    onSelectMethodType: _onSelectMethodType,
+    hideSelector: _hideSelector = false,
+    showInTabContent: _showInTabContent = true
 }) => {
-    const handleMethodTypeChange = (type: 'common' | 'custom') => {
-        if (settings.hapticFeedback) {
-            hapticsUtils.light(); // 添加轻触感反馈
-        }
-        onSelectMethodType(type);
+    const _handleMethodTypeChange = (_type: 'common' | 'custom') => {
+        // 这个函数现在不再使用，但保留以防向后兼容
     };
 
-    if (hideSelector || showInTabContent) {
-        return null;
-    }
-
     // 注意：由于方案类型选择现在已经集成到了TabContent组件中，
-    // 这个组件可能不再需要。保留它是为了向后兼容。
-    return (
-        <BottomActionBar
-            buttons={[
-                [{
-                    text: '通用方案',
-                    onClick: () => handleMethodTypeChange('common'),
-                    active: methodType === 'common'
-                }],
-                [{
-                    text: '自定义方案',
-                    onClick: () => handleMethodTypeChange('custom'),
-                    active: methodType === 'custom'
-                }]
-            ]}
-            className="px-6 "
-            fixed={false} // 让它的定位由父组件控制
-        />
-    );
+    // 这个组件不再需要渲染任何内容。保留它是为了向后兼容。
+    return null;
 };
 
-export default MethodTypeSelector; 
+export default MethodTypeSelector;

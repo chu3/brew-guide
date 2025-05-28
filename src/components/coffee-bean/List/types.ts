@@ -37,6 +37,8 @@ export interface CoffeeBeansProps {
     isOpen: boolean
     showBeanForm?: (bean: ExtendedCoffeeBean | null) => void
     onShowImport?: () => void
+    // 工具栏相关props
+    onToolbarButtonsChange?: (buttons: import('@/components/layout/NavigationToolbar').ButtonConfig[] | null) => void
 }
 
 // 导出工具函数
@@ -45,18 +47,18 @@ export const generateBeanTitle = (bean: ExtendedCoffeeBean): string => {
     if (!bean || typeof bean !== 'object' || !bean.name) {
         return bean?.name || '未命名咖啡豆';
     }
-    
+
     // 将豆子名称转换为小写以便比较
     const nameLower = bean.name.toLowerCase();
-    
+
     // 创建一个函数来检查参数是否已包含在名称中
     const isIncluded = (param?: string | null): boolean => {
         // 如果参数为空或不是字符串类型，视为已包含
         if (!param || typeof param !== 'string') return true;
-        
+
         // 将参数转换为小写并分割成单词
         const paramWords = param.toLowerCase().split(/\s+/);
-        
+
         // 检查每个单词是否都包含在名称中
         return paramWords.every(word => nameLower.includes(word));
     };
@@ -78,17 +80,17 @@ export const generateBeanTitle = (bean: ExtendedCoffeeBean): string => {
                 if (bean.roastLevel && !isIncluded(bean.roastLevel)) {
                     additionalParams.push(bean.roastLevel);
                 }
-                
+
                 // 检查并添加产地
                 if (comp.origin && !isIncluded(comp.origin)) {
                     additionalParams.push(comp.origin);
                 }
-                
+
                 // 检查并添加处理法
                 if (comp.process && !isIncluded(comp.process)) {
                     additionalParams.push(comp.process);
                 }
-                
+
                 // 检查并添加品种
                 if (comp.variety && !isIncluded(comp.variety)) {
                     additionalParams.push(comp.variety);
@@ -125,4 +127,4 @@ export const generateBeanTitle = (bean: ExtendedCoffeeBean): string => {
 };
 
 export type BloggerBeansYear = 2024 | 2025;
-export type BeanType = 'all' | 'espresso' | 'filter'; 
+export type BeanType = 'all' | 'espresso' | 'filter';

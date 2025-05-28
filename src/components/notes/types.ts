@@ -1,5 +1,6 @@
 import type { BrewingNote } from '@/lib/core/config'
 import type { BrewingNoteData, CoffeeBean } from '@/types/app'
+import type { ButtonConfig } from '@/components/layout/NavigationToolbar'
 
 // 排序类型定义
 export const SORT_OPTIONS = {
@@ -33,6 +34,7 @@ export interface BrewingHistoryProps {
     onAddNote?: () => void
     setAlternativeHeaderContent?: (content: React.ReactNode | null) => void
     setShowAlternativeHeader?: (show: boolean) => void
+    onToolbarButtonsChange?: (buttons: ButtonConfig[] | null) => void
 }
 
 // 单个笔记项属性
@@ -71,10 +73,7 @@ export interface FilterTabsProps {
     onSearchKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
 }
 
-// 添加笔记按钮属性
-export interface AddNoteButtonProps {
-    onAddNote: () => void
-}
+
 
 // 分享笔记按钮属性
 export interface ShareButtonsProps {
@@ -93,4 +92,4 @@ export interface ToastProps {
 // 编辑笔记数据类型
 export interface EditingNoteData extends Partial<BrewingNoteData> {
     coffeeBean?: CoffeeBean | null
-} 
+}

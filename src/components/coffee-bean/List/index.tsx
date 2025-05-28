@@ -6,7 +6,7 @@ import CoffeeBeanFormModal from '@/components/coffee-bean/Form/Modal'
 import CoffeeBeanRatingModal from '../Rating/Modal'
 import _CoffeeBeanRanking from '../Ranking'
 import { getBloggerBeans } from '@/lib/utils/csvUtils'
-import BottomActionBar from '@/components/layout/BottomActionBar'
+import { ButtonConfig } from '@/components/layout/NavigationToolbar'
 import { useCopy } from "@/lib/hooks/useCopy"
 import CopyFailureModal from "../ui/copy-failure-modal"
 import { type SortOption, sortBeans, convertToRankingSortOption as _convertToRankingSortOption } from './SortSelector'
@@ -55,7 +55,7 @@ const convertToRankingSortOption = _convertToRankingSortOption;
 // 添加全局缓存中的beanType属性
 globalCache.selectedBeanType = globalCache.selectedBeanType || 'all';
 
-const CoffeeBeans: React.FC<CoffeeBeansProps> = ({ isOpen, showBeanForm, onShowImport }) => {
+const CoffeeBeans: React.FC<CoffeeBeansProps> = ({ isOpen, showBeanForm, onShowImport, onToolbarButtonsChange }) => {
     const { copyText, showFailureModal, failureContent, closeFailureModal } = useCopy()
 
     // 基础状态
@@ -240,6 +240,35 @@ const CoffeeBeans: React.FC<CoffeeBeansProps> = ({ isOpen, showBeanForm, onShowI
     const handleToggleImageFlowMode = () => {
         setIsImageFlowMode(prev => !prev);
     };
+
+    // 处理工具栏按钮更新
+    useEffect(() => {
+        if (viewMode === VIEW_OPTIONS.INVENTORY && onToolbarButtonsChange) {
+            const buttons: ButtonConfig[] = [
+                {
+                    text: '添加咖啡豆',
+                    onClick: () => {
+                        if (showBeanForm) {
+                            showBeanForm(null);
+                        } else {
+                            setShowAddForm(true);
+                        }
+                    },
+                    highlight: true
+                },
+                {
+                    text: '导入咖啡豆',
+                    onClick: () => {
+                        if (onShowImport) onShowImport();
+                    },
+                    highlight: true
+                }
+            ]
+            onToolbarButtonsChange(buttons)
+        } else if (onToolbarButtonsChange) {
+            onToolbarButtonsChange(null)
+        }
+    }, [viewMode, onToolbarButtonsChange]);
 
     // 加载已评分的咖啡豆
     const loadRatedBeans = React.useCallback(async () => {
@@ -1287,33 +1316,7 @@ const CoffeeBeans: React.FC<CoffeeBeansProps> = ({ isOpen, showBeanForm, onShowI
                 </div>
             </div>
 
-            {/* 添加和导入按钮 - 仅在仓库视图显示 */}
-            {viewMode === VIEW_OPTIONS.INVENTORY && (
-                <BottomActionBar
-                    buttons={[
-                        {
-                            icon: '+',
-                            text: '添加咖啡豆',
-                            onClick: () => {
-                                if (showBeanForm) {
-                                    showBeanForm(null);
-                                } else {
-                                    setShowAddForm(true);
-                                }
-                            },
-                            highlight: true
-                        },
-                        {
-                            icon: '↓',
-                            text: '导入咖啡豆',
-                            onClick: () => {
-                                if (onShowImport) onShowImport();
-                            },
-                            highlight: true
-                        }
-                    ]}
-                />
-            )}
+            {/* 工具栏按钮已移动到顶部导航栏 */}
 
             {/* 复制失败模态框 */}
             <CopyFailureModal

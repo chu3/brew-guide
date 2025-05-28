@@ -15,6 +15,8 @@ import { useMethodSelector } from '@/lib/hooks/useMethodSelector'
 import { EditableParams } from '@/lib/hooks/useBrewingParameters'
 import CustomMethodFormModal from '@/components/method/forms/CustomMethodFormModal'
 import NavigationBar from '@/components/layout/NavigationBar'
+import BottomNavigationBar from '@/components/layout/BottomNavigationBar'
+import { ButtonConfig } from '@/components/layout/NavigationToolbar'
 import Settings, { SettingsOptions, defaultSettings } from '@/components/settings/Settings'
 import TabContent from '@/components/layout/TabContent'
 import MethodTypeSelector from '@/components/method/forms/MethodTypeSelector'
@@ -1663,6 +1665,25 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
     const [alternativeHeaderContent, setAlternativeHeaderContent] = useState<ReactNode | null>(null);
     const [showAlternativeHeader, setShowAlternativeHeader] = useState(false);
 
+    // 工具栏按钮状态
+    const [toolbarButtons, setToolbarButtons] = useState<ButtonConfig[] | ButtonConfig[][] | null>(null);
+    const [toolbarCustomPresetMode, setToolbarCustomPresetMode] = useState(false);
+    const [_toolbarSpecialLayout, _setToolbarSpecialLayout] = useState(false);
+
+    // 处理工具栏按钮变更
+    const handleToolbarButtonsChange = useCallback((buttons: ButtonConfig[] | ButtonConfig[][] | null) => {
+        setToolbarButtons(buttons);
+        // 根据按钮配置更新其他工具栏状态
+        if (buttons && Array.isArray(buttons) && buttons.length > 0) {
+            // 检查是否是自定义预设模式
+            const flatButtons = Array.isArray(buttons[0]) ? (buttons as ButtonConfig[][]).flat() : (buttons as ButtonConfig[]);
+            const hasCustomPresetButtons = flatButtons.some(btn => btn.id === 'new' || btn.id === 'import');
+            setToolbarCustomPresetMode(hasCustomPresetButtons);
+        } else {
+            setToolbarCustomPresetMode(false);
+        }
+    }, []);
+
     // 添加处理编辑笔记时的导航栏内容切换
     const _handleEditNote = (_note: BrewingNoteData) => {
         // 创建笔记编辑头部内容
@@ -1791,14 +1812,16 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                     }));
                 }}
                 onBackClick={handleBackClick}
+                // 工具栏相关props
+                toolbarButtons={toolbarButtons || undefined}
+                toolbarCustomPresetMode={toolbarCustomPresetMode}
             />
 
-            {/* 内容区域 */}
-            {activeMainTab === '冲煮' && (
-                <div
-                    className="h-full overflow-y-auto space-y-5 p-6"
-                >
-                    <TabContent
+            {/* 内容区域 - 使用 flex-1 自然占据剩余空间 */}
+            <div className="flex-1 overflow-hidden">
+                {activeMainTab === '冲煮' && (
+                    <div className="h-full overflow-y-auto space-y-5 p-6">
+                        <TabContent
                         activeMainTab={activeMainTab}
                         activeTab={activeTab}
                         content={content}
@@ -1838,32 +1861,36 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                         handleSaveEquipment={handleSaveEquipment}
                         handleDeleteEquipment={handleDeleteEquipment}
                         setShowEquipmentImportForm={setShowEquipmentImportForm}
+                        onToolbarButtonsChange={handleToolbarButtonsChange}
                     />
-                </div>
-            )}
-            {activeMainTab === '笔记' && (
-                <BrewingHistory
-                    isOpen={true}
-                    onClose={() => {
-                        saveMainTabPreference('冲煮');
-                        setActiveMainTab('冲煮');
-                        setShowHistory(false);
-                    }}
-                    onAddNote={handleAddNote}
-                    setAlternativeHeaderContent={setAlternativeHeaderContent}
-                    setShowAlternativeHeader={setShowAlternativeHeader}
-                />
-            )}
-            {activeMainTab === '咖啡豆' && (
-                <ErrorBoundary>
-                    <CoffeeBeans
-                        key={beanListKey}
-                        isOpen={activeMainTab === '咖啡豆'}
-                        showBeanForm={handleBeanForm}
-                        onShowImport={() => setShowImportBeanForm(true)}
+                    </div>
+                )}
+                {activeMainTab === '笔记' && (
+                    <BrewingHistory
+                        isOpen={true}
+                        onClose={() => {
+                            saveMainTabPreference('冲煮');
+                            setActiveMainTab('冲煮');
+                            setShowHistory(false);
+                        }}
+                        onAddNote={handleAddNote}
+                        setAlternativeHeaderContent={setAlternativeHeaderContent}
+                        setShowAlternativeHeader={setShowAlternativeHeader}
+                        onToolbarButtonsChange={handleToolbarButtonsChange}
                     />
-                </ErrorBoundary>
-            )}
+                )}
+                {activeMainTab === '咖啡豆' && (
+                    <ErrorBoundary>
+                        <CoffeeBeans
+                            key={beanListKey}
+                            isOpen={activeMainTab === '咖啡豆'}
+                            showBeanForm={handleBeanForm}
+                            onShowImport={() => setShowImportBeanForm(true)}
+                            onToolbarButtonsChange={handleToolbarButtonsChange}
+                        />
+                    </ErrorBoundary>
+                )}
+            </div>
 
             {/* 底部工具栏 - 根据当前状态显示不同内容 */}
             {/* 方案类型选择器 */}
@@ -2034,6 +2061,17 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                     />
                 )
             }
+
+            {/* 底部导航栏 */}
+            <BottomNavigationBar
+                activeMainTab={activeMainTab}
+                setActiveMainTab={handleMainTabClick}
+                setShowHistory={setShowHistory}
+                settings={settings}
+                activeBrewingStep={activeBrewingStep}
+                hasCoffeeBeans={hasCoffeeBeans}
+                _onBackClick={handleBackClick}
+            />
         </div>
     )
 }

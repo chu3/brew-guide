@@ -12,7 +12,8 @@ import { updateParameterInfo } from '@/lib/brewing/parameters'
 import { useTranslations } from 'next-intl'
 import { Equal, ArrowLeft } from 'lucide-react'
 import { saveStringState } from '@/lib/core/statePersistence'
-import { saveMainTabPreference } from '@/lib/navigation/navigationCache'
+import { saveMainTabPreference as _saveMainTabPreference } from '@/lib/navigation/navigationCache'
+import NavigationToolbar, { ButtonConfig } from './NavigationToolbar'
 
 // 统一类型定义
 type TabType = '方案' | '注水' | '记录'
@@ -506,6 +507,9 @@ interface NavigationBarProps {
     onShareEquipment?: (equipment: any) => void;
     // 添加返回按钮相关props
     onBackClick?: () => void;
+    // 工具栏相关props
+    toolbarButtons?: ButtonConfig[] | ButtonConfig[][];
+    toolbarCustomPresetMode?: boolean;
 }
 
 // 意式咖啡相关工具函数 - 优化为更简洁的实现
@@ -548,13 +552,14 @@ const useNavigation = (activeBrewingStep: BrewingStep, activeMainTab: MainTabTyp
 }
 
 const NavigationBar: React.FC<NavigationBarProps> = ({
-    activeMainTab, setActiveMainTab, activeBrewingStep, setActiveBrewingStep,
+    activeMainTab, setActiveMainTab: _setActiveMainTab, activeBrewingStep, setActiveBrewingStep,
     parameterInfo, setParameterInfo, editableParams, setEditableParams,
     isTimerRunning, showComplete, selectedEquipment, selectedMethod,
-    handleParamChange, setShowHistory, setActiveTab, onTitleDoubleClick,
+    handleParamChange, setShowHistory: _setShowHistory, setActiveTab, onTitleDoubleClick,
     settings, hasCoffeeBeans, alternativeHeader, showAlternativeHeader = false,
     handleExtractionTimeChange, customEquipments = [], onEquipmentSelect,
     onAddEquipment, onEditEquipment, onDeleteEquipment, onShareEquipment, onBackClick,
+    toolbarButtons, toolbarCustomPresetMode = false,
 }) => {
     const t = useTranslations('nav')
     const { canGoBack } = useNavigation(activeBrewingStep, activeMainTab, hasCoffeeBeans)
@@ -608,23 +613,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
 
     const shouldHideHeader = activeBrewingStep === 'brewing' && isTimerRunning && !showComplete
 
-    const handleMainTabClick = (tab: MainTabType) => {
-        if (activeMainTab === tab) return
 
-        if (settings.hapticFeedback) {
-            hapticsUtils.light()
-        }
-
-        // 保存主标签页选择到缓存
-        saveMainTabPreference(tab)
-
-        setActiveMainTab(tab)
-        if (tab === '笔记') {
-            setShowHistory(true)
-        } else if (activeMainTab === '笔记') {
-            setShowHistory(false)
-        }
-    }
 
     const shouldShowContent = activeMainTab === '冲煮' && (!isTimerRunning || showComplete)
     const shouldShowParams = parameterInfo.method
@@ -669,64 +658,35 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                             transition={{ duration: 0.2, ease: "easeInOut" }}
                             style={{ pointerEvents: shouldHideHeader ? 'none' : 'auto' }}
                         >
-                            <div className="flex items-start justify-between">
+                            <div className="flex items-center justify-between h-6">
+                                {/* 左侧：返回按钮或菜单图标 */}
                                 <div
                                     onClick={handleTitleClick}
-                                    className="cursor-pointer text-[12px] tracking-widest text-neutral-500 dark:text-neutral-400 flex items-center"
+                                    className="cursor-pointer text-neutral-500 dark:text-neutral-400 flex items-center"
                                 >
                                     {canGoBack() && onBackClick ? (
-                                        <ArrowLeft className="w-4 h-4 mr-1" />
+                                        <ArrowLeft className="w-4 h-4" />
                                     ) : (
-                                        <Equal className="w-4 h-4 mr-1" />
+                                        <Equal className="w-4 h-4" />
                                     )}
-                                    {!(canGoBack() && onBackClick) && <span>{t('title')}</span>}
                                 </div>
 
-                                {/* 主导航按钮 - 保持固定高度避免抖动 */}
-                                <div className="flex items-center space-x-6">
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                    >
-                                        <TabButton
-                                            tab={t('main.brewing')}
-                                            isActive={activeMainTab === '冲煮'}
-                                            onClick={() => handleMainTabClick('冲煮')}
-                                            dataTab="冲煮"
-                                            hideIndicator={activeMainTab === '冲煮' && activeBrewingStep === 'method'}
-                                        />
+                                {/* 中间：标题（只在非返回状态显示） */}
+                                {!(canGoBack() && onBackClick) && (
+                                    <div className="absolute left-1/2 transform -translate-x-1/2">
+                                        <span className="text-[12px] tracking-widest text-neutral-500 dark:text-neutral-400">
+                                            {t('title')}
+                                        </span>
                                     </div>
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                    >
-                                        <TabButton
-                                            tab={t('main.beans')}
-                                            isActive={activeMainTab === '咖啡豆'}
-                                            onClick={() => handleMainTabClick('咖啡豆')}
-                                            dataTab="咖啡豆"
-                                            hideIndicator={false}
-                                        />
-                                    </div>
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                    >
-                                        <TabButton
-                                            tab={t('main.notes')}
-                                            isActive={activeMainTab === '笔记'}
-                                            onClick={() => handleMainTabClick('笔记')}
-                                            dataTab="笔记"
-                                            hideIndicator={false}
-                                        />
-                                    </div>
-                                </div>
+                                )}
+
+                                {/* 右侧：工具栏（简化版） */}
+                                {toolbarButtons && (
+                                    <NavigationToolbar
+                                        buttons={toolbarButtons}
+                                        customPresetMode={toolbarCustomPresetMode}
+                                    />
+                                )}
                             </div>
                         </motion.div>
                     )}

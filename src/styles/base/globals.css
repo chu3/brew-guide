@@ -108,13 +108,13 @@ body {
   padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
 }
 
-/* 底部操作栏 */
+/* 底部操作栏 - 恢复固定定位，但要考虑底部导航栏 */
 .bottom-action-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 50;
+  z-index: 40;
   background: var(--background);
   box-shadow: 0 -1px 0 0 var(--background);
 }
