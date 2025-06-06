@@ -294,8 +294,6 @@
       "filter": "Pour Over",
       "espresso": "Espresso"
     },
-
-
     "status": {
       "inTransit": "In Transit",
       "frozen": "Frozen",
@@ -310,7 +308,6 @@
       "skipBeanSelection": "Skip bean selection",
       "usedUp": "Used Up"
     },
-
     "errorBoundary": {
       "title": "Rendering Error",
       "description": "The application encountered an error and is attempting to auto-fix...",
