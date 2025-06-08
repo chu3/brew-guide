@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { DataManager as DataManagerUtil } from '@/lib/core/dataManager'
+import { Storage } from '@/lib/core/storage'
 import { APP_VERSION } from '@/lib/core/config'
 import { Capacitor } from '@capacitor/core'
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
@@ -20,12 +21,55 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
         message: ''
     })
     const [isExporting, setIsExporting] = useState(false)
+    const [isExportingExcel, setIsExportingExcel] = useState(false)
     const [isImporting, setIsImporting] = useState(false)
     const [isResetting, setIsResetting] = useState(false)
     const [showConfirmReset, setShowConfirmReset] = useState(false)
+    const [hasData, setHasData] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const isNative = Capacitor.isNativePlatform()
+
+    // 检查是否有数据
+    const checkHasData = async () => {
+        try {
+            const coffeeBeans = await Storage.get('coffeeBeans')
+            const brewingNotes = await Storage.get('brewingNotes')
+
+            let hasCoffeeBeans = false
+            let hasBrewingNotes = false
+
+            if (coffeeBeans) {
+                try {
+                    const beans = JSON.parse(coffeeBeans)
+                    hasCoffeeBeans = Array.isArray(beans) && beans.length > 0
+                } catch {
+                    // 解析失败，忽略
+                }
+            }
+
+            if (brewingNotes) {
+                try {
+                    const notes = JSON.parse(brewingNotes)
+                    hasBrewingNotes = Array.isArray(notes) && notes.length > 0
+                } catch {
+                    // 解析失败，忽略
+                }
+            }
+
+            setHasData(hasCoffeeBeans || hasBrewingNotes)
+        } catch (error) {
+            console.error('检查数据失败:', error)
+            setHasData(false)
+        }
+    }
+
+    // 组件加载时检查数据
+    React.useEffect(() => {
+        if (isOpen) {
+            checkHasData()
+        }
+    }, [isOpen])
 
     const handleExport = async () => {
         try {
@@ -97,6 +141,91 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
         }
     }
 
+    const handleExportExcel = async () => {
+        try {
+            setIsExportingExcel(true)
+            setStatus({ type: 'info', message: '正在生成Excel文件...' })
+
+            const excelBlob = await DataManagerUtil.exportAllDataAsExcel()
+            const fileName = `brew-guide-data-${new Date().toISOString().slice(0, 10)}.xlsx`
+
+            if (isNative) {
+                try {
+                    // 将Blob转换为base64字符串
+                    const reader = new FileReader()
+                    reader.onload = async () => {
+                        try {
+                            const base64Data = (reader.result as string).split(',')[1]
+
+                            // 写入临时文件
+                            await Filesystem.writeFile({
+                                path: fileName,
+                                data: base64Data,
+                                directory: Directory.Cache
+                            })
+
+                            // 获取文件URI
+                            const uriResult = await Filesystem.getUri({
+                                path: fileName,
+                                directory: Directory.Cache
+                            })
+
+                            // 使用分享功能
+                            await Share.share({
+                                title: '导出Excel数据',
+                                text: '请选择保存位置',
+                                url: uriResult.uri,
+                                dialogTitle: '导出Excel数据'
+                            })
+
+                            // 清理临时文件
+                            await Filesystem.deleteFile({
+                                path: fileName,
+                                directory: Directory.Cache
+                            })
+
+                            setStatus({
+                                type: 'success',
+                                message: 'Excel文件已成功导出'
+                            })
+                        } catch (error) {
+                            throw new Error(`保存Excel文件失败: ${(error as Error).message}`)
+                        } finally {
+                            setIsExportingExcel(false)
+                        }
+                    }
+                    reader.onerror = () => {
+                        setStatus({ type: 'error', message: '读取Excel文件失败' })
+                        setIsExportingExcel(false)
+                    }
+                    reader.readAsDataURL(excelBlob)
+                } catch (error) {
+                    throw new Error(`处理Excel文件失败: ${(error as Error).message}`)
+                }
+            } else {
+                // Web平台处理
+                const url = URL.createObjectURL(excelBlob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = fileName
+                document.body.appendChild(a)
+                a.click()
+
+                // 清理
+                setTimeout(() => {
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
+                }, 100)
+
+                setStatus({ type: 'success', message: 'Excel文件导出成功，文件已下载' })
+            }
+        } catch (_error) {
+            setStatus({ type: 'error', message: `Excel导出失败: ${(_error as Error).message}` })
+        } finally {
+            setIsExportingExcel(false)
+        }
+    }
+
     const handleImportClick = () => {
         if (fileInputRef.current) {
             fileInputRef.current.click()
@@ -122,6 +251,8 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
                         if (onDataChange) {
                             onDataChange()
                         }
+                        // 重新检查数据状态
+                        checkHasData()
                     } else {
                         setStatus({ type: 'error', message: result.message })
                     }
@@ -160,7 +291,10 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
                 if (onDataChange) {
                     onDataChange()
                 }
-                
+
+                // 重新检查数据状态
+                checkHasData()
+
                 // 设置一个短暂延迟后刷新页面
                 setTimeout(() => {
                     window.location.reload()
@@ -242,17 +376,19 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
                         <div>
                             <button
                                 onClick={handleExport}
-                                disabled={isExporting}
+                                disabled={isExporting || isExportingExcel}
                                 className="w-full rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-200 disabled:opacity-50 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600"
                             >
-                                {isExporting ? '导出中...' : '导出所有数据'}
+                                {isExporting ? '导出中...' : '导出数据 (JSON)'}
                             </button>
                             <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                                 {isNative
-                                    ? '将所有数据导出到文档目录'
+                                    ? '将所有数据导出为JSON格式到文档目录'
                                     : '将所有数据下载为 JSON 文件'}
                             </p>
                         </div>
+
+
 
                         <div>
                             <button
@@ -335,6 +471,19 @@ const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, onDataChange
                             </p>
                         </div>
                     </div>
+
+                    {/* Excel导出链接 - 只在有数据时显示 */}
+                    {hasData && (
+                        <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                            <button
+                                onClick={handleExportExcel}
+                                disabled={isExporting || isExportingExcel}
+                                className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors underline decoration-dotted underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isExportingExcel ? '生成Excel中...' : '导出数据（Excel）'}
+                            </button>
+                        </div>
+                    )}
                 </motion.div>
             </motion.div>
         </AnimatePresence>
