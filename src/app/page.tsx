@@ -1064,7 +1064,33 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
             // 关闭导入表单
             setShowImportBeanForm(false);
 
-            // 更新咖啡豆状态
+            // 触发统一的数据更新事件机制，确保咖啡豆列表及时刷新
+            // 1. 清除CoffeeBeanManager的缓存，确保获取最新数据
+            CoffeeBeanManager.clearCache();
+
+            // 2. 触发咖啡豆数据变更事件，让所有相关组件监听并更新
+            window.dispatchEvent(
+                new CustomEvent('coffeeBeanDataChanged', {
+                    detail: {
+                        action: 'batchImport',
+                        importCount: importCount,
+                        lastBeanId: lastImportedBean?.id
+                    }
+                })
+            );
+
+            // 3. 触发咖啡豆列表变化事件，确保所有监听器都能收到通知
+            window.dispatchEvent(
+                new CustomEvent('coffeeBeanListChanged', {
+                    detail: {
+                        hasBeans: true,
+                        batchImport: true,
+                        importCount: importCount
+                    }
+                })
+            );
+
+            // 4. 更新咖啡豆状态
             handleBeanListChange();
 
             // 切换到咖啡豆标签页，跳过过渡动画

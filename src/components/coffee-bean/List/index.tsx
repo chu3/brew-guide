@@ -278,8 +278,8 @@ const CoffeeBeans: React.FC<CoffeeBeansProps> = ({
     // 监听统一的咖啡豆数据更新事件
     useEffect(() => {
         const handleCoffeeBeanDataChanged = async (event: CustomEvent) => {
-            const { action, beanId } = event.detail;
-            console.log('咖啡豆数据变更事件:', { action, beanId });
+            const { action, beanId, importCount } = event.detail;
+            console.log('咖啡豆数据变更事件:', { action, beanId, importCount });
 
             // 清除CoffeeBeanManager的缓存，确保获取最新数据
             CoffeeBeanManager.clearCache();
@@ -290,6 +290,11 @@ const CoffeeBeans: React.FC<CoffeeBeansProps> = ({
                 setBeans(loadedBeans);
                 globalCache.beans = loadedBeans;
                 updateFilteredBeansAndCategories(loadedBeans);
+
+                // 如果是批量导入，显示成功提示
+                if (action === 'batchImport' && importCount) {
+                    console.log(`批量导入成功：已导入 ${importCount} 个咖啡豆`);
+                }
             } catch (error) {
                 console.error("重新加载咖啡豆数据失败:", error);
             }
