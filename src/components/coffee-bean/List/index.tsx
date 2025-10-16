@@ -666,6 +666,10 @@ const CoffeeBeans: React.FC<CoffeeBeansProps> = ({
         try {
             const result = await handleSaveBean(bean, editingBean);
             if (result.success) {
+                // 清理历史栈中的模态框状态
+                if (window.history.state?.modal === 'bean-form') {
+                    window.history.replaceState(null, '');
+                }
                 setShowAddForm(false);
                 setEditingBean(null);
             } else {

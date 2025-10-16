@@ -121,8 +121,11 @@ const CustomMethodFormModal: React.FC<CustomMethodFormModalProps> = ({
             // 清除错误
             setValidationError(null);
 
-            // 使用历史栈管理来关闭表单，而不是直接调用onCloseCustomForm
-            handleCloseCustomForm();
+            // 完成保存后直接退出，清理历史栈并关闭表单
+            if (window.history.state?.modal === 'custom-method-form') {
+                window.history.replaceState(null, '');
+            }
+            onCloseCustomForm();
 
             return methodWithId.id;
         } catch (error) {

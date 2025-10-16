@@ -33,7 +33,13 @@ const CoffeeBeanFormModal: React.FC<CoffeeBeanFormModalProps> = ({
     
     // 历史栈管理 - 支持硬件返回键和浏览器返回按钮
     useEffect(() => {
-        if (!showForm) return
+        if (!showForm) {
+            // 模态框关闭时，确保清理历史栈中的模态框状态
+            if (window.history.state?.modal === 'bean-form') {
+                window.history.replaceState(null, '')
+            }
+            return
+        }
 
         // 如果历史栈中有 bean-detail 记录，用 replaceState 替换它
         // 注意：侧滑时可能仍会短暂看到详情页，这是浏览器机制限制

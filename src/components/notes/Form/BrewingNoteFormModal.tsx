@@ -89,7 +89,13 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
 
   // 历史栈管理 - 支持硬件返回键和浏览器返回按钮
   useEffect(() => {
-    if (!showForm) return
+    if (!showForm) {
+      // 模态框关闭时，确保清理历史栈中的模态框状态
+      if (window.history.state?.modal === 'note-stepped-form') {
+        window.history.replaceState(null, '')
+      }
+      return
+    }
 
     // 添加模态框历史记录
     window.history.pushState({ modal: 'note-stepped-form' }, '')
@@ -376,7 +382,13 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
 
     // 保存并关闭
     onSave(completeNote)
-    handleClose()
+    // 清理历史栈并直接关闭，避免触发返回到上一步
+    if (window.history.state?.modal === 'note-stepped-form') {
+      window.history.replaceState(null, '')
+    }
+    setSelectedCoffeeBean(null)
+    setSelectedMethod('')
+    onClose()
 
     // 如果提供了保存成功回调，则调用它
     if (onSaveSuccess) {

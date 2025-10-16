@@ -174,7 +174,11 @@ const CustomEquipmentFormModal: React.FC<CustomEquipmentFormModalProps> = ({
                                             ref={formRef}
                                             onSave={(equipment) => {
                                                 onSave(equipment);
-                                                handleClose();
+                                                // 清理历史栈并直接关闭，避免触发返回到上一步
+                                                if (window.history.state?.modal === 'equipment-form') {
+                                                    window.history.replaceState(null, '');
+                                                }
+                                                onClose();
                                             }}
                                             onCancel={handleClose}
                                             initialEquipment={editingEquipment}
