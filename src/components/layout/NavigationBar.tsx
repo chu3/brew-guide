@@ -773,13 +773,15 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                 </div>
 
                                 {/* 主导航按钮 - 保持固定高度避免抖动 */}
-                                <div className="flex items-center space-x-6">
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                    >
+                                <div 
+                                    className="flex items-center space-x-6"
+                                    style={{
+                                        opacity: !(canGoBack() && onBackClick) ? 1 : 0,
+                                        pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none',
+                                        visibility: !(canGoBack() && onBackClick) ? 'visible' : 'hidden'
+                                    }}
+                                >
+                                    <div>
                                         <TabButton
                                             tab="冲煮"
                                             isActive={activeMainTab === '冲煮'}
@@ -787,13 +789,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                             dataTab="冲煮"
                                         />
                                     </div>
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                        className="relative"
-                                    >
+                                    <div className="relative">
                                         {/* 咖啡豆按钮 - 带下拉菜单 */}
                                         <div
                                             ref={(el) => {
@@ -804,11 +800,14 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                             }}
                                             onClick={handleBeanTabClick}
                                             className="text-xs font-medium tracking-widest whitespace-nowrap pb-3 cursor-pointer flex items-center transition-opacity duration-100"
-                                            style={{
-                                                opacity: showViewDropdown && activeMainTab === '咖啡豆' ? 0 : 1,
-                                                pointerEvents: showViewDropdown && activeMainTab === '咖啡豆' ? 'none' : 'auto',
-                                                visibility: showViewDropdown && activeMainTab === '咖啡豆' ? 'hidden' : 'visible'
-                                            }}
+                                            style={
+                                                // 只在非返回模式下处理下拉菜单的显示/隐藏
+                                                !(canGoBack() && onBackClick) ? {
+                                                    opacity: showViewDropdown && activeMainTab === '咖啡豆' ? 0 : 1,
+                                                    pointerEvents: showViewDropdown && activeMainTab === '咖啡豆' ? 'none' : 'auto',
+                                                    visibility: showViewDropdown && activeMainTab === '咖啡豆' ? 'hidden' : 'visible'
+                                                } : undefined
+                                            }
                                             data-view-selector
                                         >
                                             <span className={`relative inline-block ${
@@ -875,12 +874,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
 
 
                                     </div>
-                                    <div
-                                        style={{
-                                            opacity: !(canGoBack() && onBackClick) ? 1 : 0,
-                                            pointerEvents: !(canGoBack() && onBackClick) ? 'auto' : 'none'
-                                        }}
-                                    >
+                                    <div>
                                         <TabButton
                                             tab="笔记"
                                             isActive={activeMainTab === '笔记'}
