@@ -11,7 +11,7 @@ import { Camera, Image as ImageIcon, X } from 'lucide-react'
 import { equipmentList, commonMethods, type Method, type CustomEquipment } from '@/lib/core/config'
 import { loadCustomEquipments } from '@/lib/managers/customEquipments'
 import { loadCustomMethods } from '@/lib/managers/customMethods'
-import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
+import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
 import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { getEquipmentNameById, getEquipmentIdByName } from '@/lib/utils/equipmentUtils'
@@ -1196,8 +1196,13 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                 </div>
                             </div>
                             
-                            {/* 磨豆机选择器 */}
-                            {settings && (
+                            {/* 磨豆机选择器 - 如果方案有指定磨豆机或用户有多个磨豆机时显示 */}
+                            {settings && (() => {
+                                const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                const hasMethodGrinder = grinderId && grinderId !== 'generic';
+                                const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
+                                return hasMethodGrinder || hasMultipleGrinders;
+                            })() && (
                                 <div className="min-w-0">
                                     <Select
                                         value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}

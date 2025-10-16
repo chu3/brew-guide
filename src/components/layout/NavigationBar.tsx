@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
-import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder } from '@/lib/utils/grindUtils'
+import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
 import { saveLastUsedGrinder, getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
@@ -186,6 +186,15 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     // 获取用户的磨豆机列表
     const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders)
     
+    // 检测用户是否只有通用研磨度
+    const onlyHasGeneric = hasOnlyGenericGrinder(settings.myGrinders)
+    
+    // 检测当前方案是否有指定磨豆机（非通用）
+    const hasMethodGrinder = currentGrinderId && currentGrinderId !== 'generic'
+    
+    // 判断是否应该显示磨豆机选择器：方案有指定磨豆机 或 用户有多个磨豆机
+    const shouldShowGrinderSelector = hasMethodGrinder || !onlyHasGeneric
+    
     // 获取当前磨豆机名称（支持从所有磨豆机中查找，包括用户未拥有但方案中设定的磨豆机）
     const currentGrinder = findGrinder(actualGrinderId, settings.customGrinders, false)
     const currentGrinderName = currentGrinder?.name || '通用'
@@ -341,13 +350,15 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     return (
         <span className={`inline-flex items-center gap-1 ${className}`}>
             {/* 隐藏的测量元素 - 用于测量磨豆机名称宽度 */}
-            <span 
-                ref={measureRef}
-                className="absolute invisible text-xs whitespace-nowrap"
-                style={{ pointerEvents: 'none' }}
-            >
-                {currentGrinderName}
-            </span>
+            {shouldShowGrinderSelector && (
+                <span 
+                    ref={measureRef}
+                    className="absolute invisible text-xs whitespace-nowrap"
+                    style={{ pointerEvents: 'none' }}
+                >
+                    {currentGrinderName}
+                </span>
+            )}
             
             {/* 隐藏的测量元素 - 用于测量输入值宽度 */}
             <span 
@@ -358,23 +369,25 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
                 {tempValue || '0'}
             </span>
             
-            {/* 自定义磨豆机选择器 */}
-            <span className="relative inline-flex items-center">
-                <span
-                    ref={triggerRef}
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className={`bg-transparent border-0 border-b border-dashed text-xs cursor-pointer outline-none pb-0.5 transition-colors duration-150 whitespace-nowrap overflow-hidden mr-1 ${
-                        isDropdownOpen 
-                            ? 'border-neutral-600 dark:border-neutral-400 text-neutral-800 dark:text-neutral-200'
-                            : 'border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 hover:border-neutral-500 dark:hover:border-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
-                    }`}
-                    style={{ 
-                        width: selectWidth ? `${selectWidth}px` : 'auto',
-                    }}
-                >
-                    {currentGrinderName}
+            {/* 自定义磨豆机选择器 - 仅在方案有指定磨豆机或用户有多个磨豆机时显示 */}
+            {shouldShowGrinderSelector && (
+                <span className="relative inline-flex items-center">
+                    <span
+                        ref={triggerRef}
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className={`bg-transparent border-0 border-b border-dashed text-xs cursor-pointer outline-none pb-0.5 transition-colors duration-150 whitespace-nowrap overflow-hidden mr-1 ${
+                            isDropdownOpen 
+                                ? 'border-neutral-600 dark:border-neutral-400 text-neutral-800 dark:text-neutral-200'
+                                : 'border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 hover:border-neutral-500 dark:hover:border-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+                        }`}
+                        style={{ 
+                            width: selectWidth ? `${selectWidth}px` : 'auto',
+                        }}
+                    >
+                        {currentGrinderName}
+                    </span>
                 </span>
-            </span>
+            )}
             
             {/* 下拉菜单 - 极简风格设计 */}
             <AnimatePresence>

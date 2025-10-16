@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Method, CustomEquipment } from '@/lib/core/config'
-import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit, parseGrindSize, combineGrindSize, findGrinder, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
+import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit, parseGrindSize, combineGrindSize, findGrinder, getMyGrinders, smartConvertGrindSize, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
 import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { SettingsOptions } from '@/components/settings/Settings'
@@ -433,24 +433,31 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">研磨度:</label>
                   <div className="flex items-center gap-1.5">
-                    {/* 磨豆机选择器 */}
-                    <Select value={selectedGrinderId} onValueChange={(value) => handleGrinderChange(value, method)}>
-                      <SelectTrigger 
-                        className="w-auto min-w-[60px] py-1 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs text-neutral-800 dark:text-neutral-100 font-medium"
-                      >
-                        <SelectValue>
-                          {findGrinder(selectedGrinderId, settings?.customGrinders, true)?.name || '通用'}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
-                        {/* 只显示用户添加的磨豆机 */}
-                        {getMyGrinders(settings?.myGrinders || ['generic'], settings?.customGrinders).map((grinder) => (
-                          <SelectItem key={grinder.id} value={grinder.id}>
-                            {grinder.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {/* 磨豆机选择器 - 如果方案有指定磨豆机或用户有多个磨豆机时显示 */}
+                    {settings && (() => {
+                      const { grinderId } = parseGrindSize(method.params.grindSize);
+                      const hasMethodGrinder = grinderId && grinderId !== 'generic';
+                      const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
+                      return hasMethodGrinder || hasMultipleGrinders;
+                    })() && (
+                      <Select value={selectedGrinderId} onValueChange={(value) => handleGrinderChange(value, method)}>
+                        <SelectTrigger 
+                          className="w-auto min-w-[60px] py-1 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs text-neutral-800 dark:text-neutral-100 font-medium"
+                        >
+                          <SelectValue>
+                            {findGrinder(selectedGrinderId, settings?.customGrinders, true)?.name || '通用'}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                          {/* 只显示用户添加的磨豆机 */}
+                          {getMyGrinders(settings?.myGrinders || ['generic'], settings?.customGrinders).map((grinder) => (
+                            <SelectItem key={grinder.id} value={grinder.id}>
+                              {grinder.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     
                     {/* 研磨度输入 */}
                     <input

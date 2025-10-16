@@ -306,7 +306,7 @@ const ParamsStep: React.FC<ParamsStepProps> = ({
           </label>
           
           <div className="flex items-center gap-2">
-            {/* 磨豆机选择器 */}
+            {/* 磨豆机选择器 - 添加/编辑方案时始终显示 */}
             <div className="flex-1 relative">
               <Select value={actualGrinderId} onValueChange={handleGrinderChange}>
                 <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-300 dark:border-neutral-700 focus-within:border-neutral-800 dark:focus-within:border-neutral-400 shadow-none rounded-none h-auto px-0 text-base [&>span]:text-left">

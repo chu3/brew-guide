@@ -401,3 +401,17 @@ export function smartConvertGrindSize(
 	return currentValue;
 }
 
+/**
+ * 检测用户是否只有通用研磨度（没有添加任何其他磨豆机）
+ * @param myGrinders 用户的磨豆机列表
+ * @returns 是否只有通用研磨度
+ */
+export function hasOnlyGenericGrinder(myGrinders?: string[]): boolean {
+	if (!myGrinders || myGrinders.length === 0) {
+		return true;
+	}
+	
+	// 如果列表只包含一个元素且为 'generic'，则返回 true
+	return myGrinders.length === 1 && myGrinders[0] === 'generic';
+}
+
