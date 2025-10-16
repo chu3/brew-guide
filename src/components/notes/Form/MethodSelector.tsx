@@ -392,7 +392,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                       type="text"
                       value={coffeeAmount}
                       onChange={(e) => handleCoffeeAmountChange(e.target.value, method)}
-                      className="w-12 py-1 text-right text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                      className="w-12 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
                       placeholder="15"
                     />
                     <span className="text-xs text-neutral-400 dark:text-neutral-500">g</span>
@@ -407,7 +407,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                       type="text"
                       value={extractNumber(waterAmount)}
                       onChange={(e) => handleWaterAmountChange(e.target.value, method)}
-                      className="w-14 py-1 text-right text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                      className="w-14 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
                       placeholder="225"
                     />
                     <span className="text-xs text-neutral-400 dark:text-neutral-500">g</span>
