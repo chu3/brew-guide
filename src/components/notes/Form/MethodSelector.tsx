@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { Method } from '@/lib/core/config'
-import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit } from '@/lib/utils/grindUtils'
+import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit, parseGrindSize, combineGrindSize, findGrinder, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
 import { SettingsOptions } from '@/components/settings/Settings'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/coffee-bean/ui/select'
 
 interface MethodSelectorProps {
   selectedEquipment: string
@@ -29,6 +30,12 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   const [ratioAmount, setRatioAmount] = useState<string>('15')
   const [waterAmount, setWaterAmount] = useState<string>('225g')
   const [grindSize, setGrindSize] = useState<string>('中细')
+  // 使用用户磨豆机列表中的第一个作为默认磨豆机
+  const [selectedGrinderId, setSelectedGrinderId] = useState<string>(
+    (settings?.myGrinders && settings.myGrinders.length > 0) 
+      ? settings.myGrinders[0] 
+      : 'generic'
+  )
   const [_tempValue, setTempValue] = useState<string>('92')
 
   // 处理咖啡粉量变化
@@ -89,12 +96,66 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
     }
   }
 
+  // 处理水量变化
+  const handleWaterAmountChange = (value: string, method: Method) => {
+    // 允许输入数字和小数点的正则表达式
+    const regex = /^$|^[0-9]*\.?[0-9]*$/;
+    if (regex.test(value)) {
+      setWaterAmount(value ? `${value}g` : '')
+
+      // 更新方法参数
+      method.params.water = value ? `${value}g` : '0g'
+
+      // 根据水量和咖啡粉量计算水粉比
+      if (coffeeAmount && value && value !== '.') {
+        const coffeeValue = parseFloat(coffeeAmount)
+        const waterValue = parseFloat(value)
+
+        if (!isNaN(coffeeValue) && !isNaN(waterValue) && coffeeValue > 0) {
+          const ratioValue = waterValue / coffeeValue
+          // 保留一位小数
+          const roundedRatioValue = Math.round(ratioValue * 10) / 10
+          method.params.ratio = `1:${roundedRatioValue}`
+          setRatioAmount(roundedRatioValue.toString())
+        }
+      }
+
+      // 通知父组件参数已更改
+      onParamsChange(method)
+    }
+  }
+
   // 处理研磨度变化
   const handleGrindSizeChange = (value: string, method: Method) => {
     setGrindSize(value)
 
-    // 更新方法参数
-    method.params.grindSize = value
+    // 组合磨豆机ID和研磨度值
+    const combinedGrindSize = combineGrindSize(selectedGrinderId, value)
+    method.params.grindSize = combinedGrindSize
+
+    // 通知父组件参数已更改
+    onParamsChange(method)
+  }
+
+  // 处理磨豆机切换
+  const handleGrinderChange = (newGrinderId: string, method: Method) => {
+    const oldGrinderId = selectedGrinderId
+    setSelectedGrinderId(newGrinderId)
+
+    // 使用智能转换函数
+    const newGrindSizeValue = smartConvertGrindSize(
+      grindSize,
+      oldGrinderId,
+      newGrinderId,
+      settings?.customGrinders
+    )
+    
+    // 更新显示的研磨度值
+    setGrindSize(newGrindSizeValue)
+
+    // 组合新的磨豆机ID和研磨度值
+    const combinedGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
+    method.params.grindSize = combinedGrindSize
 
     // 通知父组件参数已更改
     onParamsChange(method)
@@ -102,6 +163,14 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
 
   // 处理水温变化
   // 未使用的水温变更处理函数，可以在将来实现
+
+  // 当用户在设置中更改磨豆机列表时，同步更新本地状态
+  useEffect(() => {
+    // 只在没有选择方法时（新建笔记）更新默认磨豆机
+    if (!selectedMethod && settings?.myGrinders && settings.myGrinders.length > 0) {
+      setSelectedGrinderId(settings.myGrinders[0])
+    }
+  }, [settings?.myGrinders, selectedMethod])
 
   // 当选择的方法变化时，初始化参数
   useEffect(() => {
@@ -119,9 +188,20 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setCoffeeAmount(coffee)
         setRatioAmount(ratio)
         setWaterAmount(method.params.water)
-        // 设置研磨度时应用转换
-        const displayGrindSize = settings ? formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined) : method.params.grindSize
-        setGrindSize(displayGrindSize)
+        
+        // 解析研磨度，提取磨豆机ID和值
+        const { grinderId, value } = parseGrindSize(method.params.grindSize)
+        
+        // 设置磨豆机（如果没有磨豆机信息，使用用户磨豆机列表中的第一个）
+        const defaultGrinderId = (settings?.myGrinders && settings.myGrinders.length > 0) 
+          ? settings.myGrinders[0] 
+          : 'generic'
+        const actualGrinderId = grinderId || defaultGrinderId
+        setSelectedGrinderId(actualGrinderId)
+        
+        // 设置研磨度值（仅值部分，不包含磨豆机ID）
+        setGrindSize(value)
+        
         setTempValue(temp)
       }
     }
@@ -198,7 +278,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
               <div className="flex items-center">
                 <span className="text-xs font-medium w-14">研磨度:</span>
                 <span className="text-xs font-medium">
-                  {settings ? formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined) : method.params.grindSize}
+                  {settings ? formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders, { showGrinderName: true }) : method.params.grindSize}
                 </span>
               </div>
             </div>
@@ -206,40 +286,47 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
 
           {isSelected && (
             <div className="mt-2 pt-2 border-t border-dashed border-neutral-200 dark:border-neutral-700" onClick={(e) => e.stopPropagation()}>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {/* 咖啡粉量 */}
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">咖啡粉:</label>
-                  <div className="w-20 flex justify-end">
+                  <div className="flex items-baseline gap-0.5">
                     <input
                       type="text"
                       value={coffeeAmount}
                       onChange={(e) => handleCoffeeAmountChange(e.target.value, method)}
-                      className="w-12 py-0.5 px-1 border border-neutral-300 dark:border-neutral-700 rounded-sm bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-right text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-neutral-500"
+                      className="w-12 py-1 text-right text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
                       placeholder="15"
                     />
-                    <span className="ml-0.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">g</span>
+                    <span className="text-xs text-neutral-400 dark:text-neutral-500">g</span>
                   </div>
                 </div>
 
-                {/* 水量 - 不可编辑，仅显示计算结果 */}
+                {/* 水量 - 可编辑 */}
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">水量:</label>
-                  <div className="w-20 flex justify-end">
-                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{waterAmount}</span>
+                  <div className="flex items-baseline gap-0.5">
+                    <input
+                      type="text"
+                      value={extractNumber(waterAmount)}
+                      onChange={(e) => handleWaterAmountChange(e.target.value, method)}
+                      className="w-14 py-1 text-right text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                      placeholder="225"
+                    />
+                    <span className="text-xs text-neutral-400 dark:text-neutral-500">g</span>
                   </div>
                 </div>
 
                 {/* 粉水比 */}
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">粉水比:</label>
-                  <div className="w-20 flex justify-end items-center">
-                    <span className="mr-0.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">1:</span>
+                  <div className="flex items-baseline gap-0.5">
+                    <span className="text-xs text-neutral-400 dark:text-neutral-500">1:</span>
                     <input
                       type="text"
                       value={ratioAmount}
                       onChange={(e) => handleRatioAmountChange(e.target.value, method)}
-                      className="w-10 py-0.5 px-1 border border-neutral-300 dark:border-neutral-700 rounded-sm bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-right text-xs font-medium  focus:outline-hidden focus:ring-1 focus:ring-neutral-500"
+                      className="w-10 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
                       placeholder="15"
                     />
                   </div>
@@ -248,13 +335,33 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                 {/* 研磨度 */}
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">研磨度:</label>
-                  <div className="w-20 flex justify-end">
+                  <div className="flex items-center gap-1.5">
+                    {/* 磨豆机选择器 */}
+                    <Select value={selectedGrinderId} onValueChange={(value) => handleGrinderChange(value, method)}>
+                      <SelectTrigger 
+                        className="w-auto min-w-[60px] py-1 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs text-neutral-800 dark:text-neutral-100 font-medium"
+                      >
+                        <SelectValue>
+                          {findGrinder(selectedGrinderId, settings?.customGrinders, true)?.name || '通用'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                        {/* 只显示用户添加的磨豆机 */}
+                        {getMyGrinders(settings?.myGrinders || ['generic'], settings?.customGrinders).map((grinder) => (
+                          <SelectItem key={grinder.id} value={grinder.id}>
+                            {grinder.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {/* 研磨度输入 */}
                     <input
                       type="text"
                       value={grindSize}
                       onChange={(e) => handleGrindSizeChange(e.target.value, method)}
-                      className="w-16 py-0.5 px-1 border border-neutral-300 dark:border-neutral-700 rounded-sm bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-right text-xs font-medium  focus:outline-hidden focus:ring-1 focus:ring-neutral-500"
-                      placeholder={settings && hasSpecificGrindScale(settings.grindType) ? `8${getGrindScaleUnit(settings.grindType)}` : '中细'}
+                      className="w-16 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                      placeholder={settings && hasSpecificGrindScale(selectedGrinderId) ? `8${getGrindScaleUnit(selectedGrinderId)}` : '中细'}
                     />
                   </div>
                 </div>

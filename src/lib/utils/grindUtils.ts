@@ -1,5 +1,104 @@
 import { availableGrinders } from '../core/config';
 
+// 定义自定义磨豆机类型（与Settings.tsx保持一致）
+export interface CustomGrinder {
+	id: string;
+	name: string;
+	grindSizes: Record<string, string>;
+	isCustom: true;
+}
+
+/**
+ * 解析研磨度字符串，提取磨豆机ID和研磨度值
+ * 格式: "磨豆机ID:研磨度值" 或 "研磨度值"
+ * @param grindSize 研磨度字符串
+ * @returns { grinderId: 磨豆机ID或null, value: 研磨度值 }
+ */
+export function parseGrindSize(grindSize: string): { 
+	grinderId: string | null; 
+	value: string;
+} {
+	if (!grindSize) {
+		return { grinderId: null, value: '' };
+	}
+
+	// 检查是否包含分隔符 ":"
+	if (grindSize.includes(':')) {
+		const parts = grindSize.split(':');
+		if (parts.length >= 2) {
+			const grinderId = parts[0].trim();
+			const value = parts.slice(1).join(':').trim(); // 支持值中包含冒号
+			return { grinderId: grinderId || null, value };
+		}
+	}
+
+	// 旧格式或纯文本，没有磨豆机信息
+	return { grinderId: null, value: grindSize };
+}
+
+/**
+ * 组合磨豆机ID和研磨度值为存储格式
+ * @param grinderId 磨豆机ID
+ * @param value 研磨度值
+ * @returns 组合后的字符串
+ */
+export function combineGrindSize(grinderId: string | null, value: string): string {
+	if (!value) return '';
+	
+	// 如果是通用类型或没有磨豆机ID，直接返回值
+	if (!grinderId || grinderId === 'generic') {
+		return value;
+	}
+
+	// 组合为 "磨豆机ID:研磨度值"
+	return `${grinderId}:${value}`;
+}
+
+/**
+ * 获取磨豆机信息（包括自定义磨豆机）
+ * @param grinderId 磨豆机ID
+ * @param customGrinders 自定义磨豆机列表
+ * @param fallbackToGeneric 当找不到磨豆机时是否降级到通用磨豆机（默认：false）
+ * @returns 磨豆机对象或null
+ */
+export function findGrinder(
+	grinderId: string | null, 
+	customGrinders?: CustomGrinder[],
+	fallbackToGeneric: boolean = false
+): { id: string; name: string; grindSizes?: Record<string, string> } | null {
+	if (!grinderId) return null;
+
+	// 先在内置磨豆机中查找
+	const builtInGrinder = availableGrinders.find(g => g.id === grinderId);
+	if (builtInGrinder) {
+		return builtInGrinder;
+	}
+
+	// 在自定义磨豆机中查找
+	if (customGrinders) {
+		const customGrinder = customGrinders.find(g => g.id === grinderId);
+		if (customGrinder) {
+			return {
+				id: customGrinder.id,
+				name: customGrinder.name,
+				grindSizes: customGrinder.grindSizes
+			};
+		}
+	}
+
+	// 降级处理：如果磨豆机已被删除，返回通用磨豆机作为降级方案
+	if (fallbackToGeneric) {
+		console.warn(`磨豆机 ${grinderId} 不存在，使用通用磨豆机`);
+		return {
+			id: 'generic',
+			name: '通用',
+			grindSizes: {}
+		};
+	}
+
+	return null;
+}
+
 /**
  * 判断磨豆机是否支持特定刻度（如"格"）
  * @param grinderId 磨豆机ID
@@ -35,34 +134,15 @@ export function getGrindScaleUnit(grinderId: string): string {
 	return '';
 }
 
-// 幻刺研磨度转换映射表
-// const phanciGrindSizes: Record<string, string> = { // Removed unused variable
-// 	极细: "1-2格", // 意式咖啡
-// 	特细: "2-4格", // 意式适合2-4档
-// 	细: "4-6格", // 摩卡壶适合3-6.5档
-// 	中细: "8-9格", // 手冲适合6-10档，常用中细为8-9
-// 	中细偏粗: "8.5-10格", // 手冲偏粗
-// 	中粗: "11-12格", // 法压壶适合9-11.5档
-// 	粗: "12-14格", // 法压壶粗一些
-// 	特粗: "15-20格", // 冷萃适合8-12档，但使用特粗研磨度
-// 	// 添加咖啡冲煮方式的特定转换
-// 	意式: "2-4格",
-// 	摩卡壶: "3-6.5格",
-// 	手冲: "6-10格",
-// 	法压壶: "9-11.5格",
-// 	冷萃: "8-12格",
-// 	// 添加其他常用研磨度转换
-// };
-
 /**
  * 将通用研磨度转换为特定磨豆机的研磨度（用于显示在界面上）
  * 这是转化研磨度功能，将通用研磨度描述转换为特定磨豆机的刻度/格数
  * @param grindSize 通用研磨度描述 (e.g., "中细", "手冲")
  * @param grinderId 目标磨豆机 ID
  * @param customGrinders 自定义磨豆机列表
- * @returns 对应的特定磨豆机研磨度设置，如果无法转换则返回原始值及建议
+ * @returns 对应的特定磨豆机磨豆机设置，如果无法转换则返回原始值及建议
  */
-export function convertToSpecificGrind(grindSize: string, grinderId: string, customGrinders?: Record<string, unknown>[]): string {
+export function convertToSpecificGrind(grindSize: string, grinderId: string, customGrinders?: CustomGrinder[]): string {
 	if (!grindSize) return "";
 
 	// 使用getReferenceGrindSizes来获取研磨度映射，包含自定义磨豆机
@@ -121,25 +201,44 @@ export function convertToSpecificGrind(grindSize: string, grinderId: string, cus
 /**
  * 根据设置格式化研磨度显示（用于UI显示）
  * 这是转化研磨度的主要函数，用于在界面上显示对应磨豆机的研磨度
- * @param grindSize 原始研磨度（通用描述）
- * @param grindType 磨豆机 ID (来自设置)
+ * @param grindSize 原始研磨度（可能包含磨豆机信息: "grinderId:value" 或纯文本）
+ * @param grindType 磨豆机 ID (来自全局设置，作为fallback)
  * @param customGrinders 自定义磨豆机列表
+ * @param options 可选配置 { showGrinderName: 是否显示磨豆机名称 }
  * @returns 格式化后的研磨度显示
  */
 export function formatGrindSize(
 	grindSize: string,
 	grindType: string,
-	customGrinders?: Record<string, unknown>[]
+	customGrinders?: CustomGrinder[],
+	options?: { showGrinderName?: boolean }
 ): string {
 	if (!grindSize) return "";
 
-	// 如果不是通用类型，则尝试转换
-	if (grindType !== 'generic') {
-		return convertToSpecificGrind(grindSize, grindType, customGrinders);
+	// 解析研磨度字符串
+	const { grinderId, value } = parseGrindSize(grindSize);
+	
+	// 确定实际使用的磨豆机ID（优先使用研磨度中携带的ID，否则使用全局设置）
+	const actualGrinderId = grinderId || grindType;
+
+	// 如果是通用类型，直接返回值
+	if (actualGrinderId === 'generic') {
+		return value;
 	}
 
-	// 如果是通用类型，直接返回
-	return grindSize;
+	// 转换研磨度值
+	const convertedValue = convertToSpecificGrind(value, actualGrinderId, customGrinders);
+
+	// 如果需要显示磨豆机名称
+	if (options?.showGrinderName) {
+		// 使用降级处理，如果磨豆机不存在则显示通用
+		const grinder = findGrinder(actualGrinderId, customGrinders, true);
+		if (grinder) {
+			return `${grinder.name} ${convertedValue}`;
+		}
+	}
+
+	return convertedValue;
 }
 
 /**
@@ -149,7 +248,7 @@ export function formatGrindSize(
  * @param customGrinders 自定义磨豆机列表
  * @returns 研磨度映射对象，如果未找到则返回空对象
  */
-export function getReferenceGrindSizes(grinderId: string, customGrinders?: Record<string, unknown>[]): Record<string, string> {
+export function getReferenceGrindSizes(grinderId: string, customGrinders?: CustomGrinder[]): Record<string, string> {
 	// 先在内置磨豆机中查找
 	const grinder = availableGrinders.find(g => g.id === grinderId);
 
@@ -176,7 +275,7 @@ export function getReferenceGrindSizes(grinderId: string, customGrinders?: Recor
  * @param customGrinders 自定义磨豆机列表
  * @returns 包含基础研磨度和特定应用研磨度两个分类的对象
  */
-export function getCategorizedGrindSizes(grinderId: string, customGrinders?: Record<string, unknown>[]): {
+export function getCategorizedGrindSizes(grinderId: string, customGrinders?: CustomGrinder[]): {
 	basicGrindSizes: Record<string, string>;
 	applicationGrindSizes: Record<string, string>;
 } {
@@ -199,3 +298,105 @@ export function getCategorizedGrindSizes(grinderId: string, customGrinders?: Rec
 
 	return { basicGrindSizes, applicationGrindSizes };
 }
+
+/**
+ * 获取用户的磨豆机列表（包括内置和自定义）
+ * @param myGrinderIds 用户添加的磨豆机ID列表
+ * @param customGrinders 自定义磨豆机列表
+ * @returns 用户的磨豆机对象数组
+ */
+export function getMyGrinders(
+	myGrinderIds: string[] = ['generic'],
+	customGrinders?: CustomGrinder[]
+): Array<{ id: string; name: string; grindSizes?: Record<string, string> }> {
+	const grinders: Array<{ id: string; name: string; grindSizes?: Record<string, string> }> = [];
+
+	myGrinderIds.forEach(id => {
+		const grinder = findGrinder(id, customGrinders);
+		if (grinder) {
+			grinders.push(grinder);
+		}
+	});
+
+	return grinders;
+}
+
+/**
+ * 检查研磨度值是否是预设的标准值
+ * @param grindSize 研磨度值
+ * @param grinderId 磨豆机ID
+ * @param customGrinders 自定义磨豆机列表
+ * @returns 是否是预设值
+ */
+export function isPresetGrindSize(grindSize: string, grinderId: string, customGrinders?: CustomGrinder[]): boolean {
+	if (!grindSize || !grinderId || grinderId === 'generic') return false;
+
+	const grindSizesMap = getReferenceGrindSizes(grinderId, customGrinders);
+	if (!grindSizesMap || Object.keys(grindSizesMap).length === 0) return false;
+
+	// 检查是否精确匹配预设值
+	return Object.values(grindSizesMap).includes(grindSize);
+}
+
+/**
+ * 反向查找：从磨豆机特定刻度转换为通用研磨度描述
+ * @param grindSize 磨豆机特定刻度（如"8格"）
+ * @param grinderId 当前磨豆机ID
+ * @param customGrinders 自定义磨豆机列表
+ * @returns 通用研磨度描述（如"中细"），如果找不到则返回原值
+ */
+export function reverseConvertGrindSize(grindSize: string, grinderId: string, customGrinders?: CustomGrinder[]): string {
+	if (!grindSize || !grinderId || grinderId === 'generic') return grindSize;
+
+	const grindSizesMap = getReferenceGrindSizes(grinderId, customGrinders);
+	if (!grindSizesMap || Object.keys(grindSizesMap).length === 0) return grindSize;
+
+	// 查找匹配的键
+	for (const [key, value] of Object.entries(grindSizesMap)) {
+		if (value === grindSize) {
+			return key;
+		}
+	}
+
+	return grindSize;
+}
+
+/**
+ * 智能转换研磨度值（在切换磨豆机时自动转换预设值）
+ * @param currentValue 当前研磨度值
+ * @param fromGrinderId 源磨豆机ID
+ * @param toGrinderId 目标磨豆机ID
+ * @param customGrinders 自定义磨豆机列表
+ * @returns 转换后的研磨度值
+ */
+export function smartConvertGrindSize(
+	currentValue: string,
+	fromGrinderId: string,
+	toGrinderId: string,
+	customGrinders?: CustomGrinder[]
+): string {
+	// 如果目标磨豆机和源磨豆机相同，直接返回
+	if (fromGrinderId === toGrinderId) {
+		return currentValue;
+	}
+
+	// 检查当前研磨度值是否是旧磨豆机的预设值
+	const isOldPreset = isPresetGrindSize(currentValue, fromGrinderId, customGrinders);
+	
+	// 常见研磨度描述（从通用磨豆机切换时也应视为"预设值"）
+	const commonGrindDescriptions = ['极细', '特细', '细', '中细', '中细偏粗', '中粗', '粗', '特粗', '意式', '摩卡壶', '手冲', '法压壶', '冷萃'];
+	const isCommonDescription = commonGrindDescriptions.includes(currentValue);
+	
+	// 如果是预设值，或者从通用磨豆机切换且是常见描述，都进行智能转换
+	if (isOldPreset || (fromGrinderId === 'generic' && isCommonDescription)) {
+		// 1. 先将旧磨豆机的刻度反向转换为通用描述（如"8格" -> "中细"）
+		const genericDescription = reverseConvertGrindSize(currentValue, fromGrinderId, customGrinders);
+		
+		// 2. 再将通用描述转换为新磨豆机的刻度（如"中细" -> "9格"）
+		return convertToSpecificGrind(genericDescription, toGrinderId, customGrinders);
+	}
+	
+	// 如果不是预设值（用户自己填写的），保持原值不变
+	return currentValue;
+}
+

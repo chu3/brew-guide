@@ -51,6 +51,7 @@ export interface SettingsOptions {
     showTotalPrice: boolean // 是否显示总价格而不是单价
     showStatusDots: boolean // 是否显示状态点
     customGrinders?: CustomGrinder[] // 添加自定义磨豆机列表
+    myGrinders?: string[] // 我的磨豆机列表（存储磨豆机ID，包括内置和自定义）
 
     safeAreaMargins?: {
         top: number // 顶部边距
@@ -132,6 +133,7 @@ export const defaultSettings: SettingsOptions = {
     showTotalPrice: false, // 默认显示单价
     showStatusDots: true, // 默认显示状态点
     customGrinders: [], // 默认无自定义磨豆机
+    myGrinders: ['generic'], // 默认包含"通用"磨豆机
 
     safeAreaMargins: {
         top: 38, // 默认顶部边距 42px
@@ -251,7 +253,7 @@ const Settings: React.FC<SettingsProps> = ({
         }
     }, [])
 
-    // 添加研磨度设置状态
+    // 添加磨豆机设置状态
     const [showGrinderSettings, setShowGrinderSettings] = useState(false)
 
     // 添加库存扣除预设值设置状态
@@ -376,6 +378,22 @@ const Settings: React.FC<SettingsProps> = ({
     useEffect(() => {
         if (!isOpen) return
         
+        // 监听设置重新加载事件（用于子组件直接修改存储后通知父组件）
+        const handleSettingsReload = async () => {
+            try {
+                const { Storage } = await import('@/lib/core/storage');
+                const settingsStr = await Storage.get('brewGuideSettings')
+                if (settingsStr) {
+                    const loadedSettings = JSON.parse(settingsStr)
+                    setSettings(loadedSettings)
+                }
+            } catch (error) {
+                console.error('重新加载设置失败:', error)
+            }
+        }
+
+        window.addEventListener('settingsReload', handleSettingsReload)
+        
         // 检查是否已经有设置相关的历史记录
         const hasSettingsHistory = window.history.state?.modal?.includes('-settings') || window.history.state?.modal === 'settings'
         
@@ -419,6 +437,7 @@ const Settings: React.FC<SettingsProps> = ({
         
         return () => {
             window.removeEventListener('popstate', handlePopState)
+            window.removeEventListener('settingsReload', handleSettingsReload)
         }
     }, [isOpen, onClose, showDisplaySettings, showGrinderSettings, showStockSettings, showBeanSettings, 
         showFlavorPeriodSettings, showTimerSettings, showDataSettings, showNotificationSettings, 
@@ -685,7 +704,7 @@ const handleChange = async <K extends keyof SettingsOptions>(
                     >
                         <div className="flex items-center space-x-3">
                             <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
-                            <span>研磨度设置</span>
+                            <span>磨豆机设置</span>
                         </div>
                         <ChevronRight className="h-4 w-4 text-neutral-400" />
                     </button>
@@ -838,7 +857,7 @@ const handleChange = async <K extends keyof SettingsOptions>(
                 />
             )}
 
-            {/* 研磨度设置组件 */}
+            {/* 磨豆机设置组件 */}
             {showGrinderSettings && (
                 <GrinderSettings
                     settings={settings}

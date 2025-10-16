@@ -703,7 +703,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                     <>
                                                                         <span className="shrink-0">·</span>
                                                                         <EditableParameter
-                                                                            value={formatGrindSize(displayOverlay?.grindSize || editableParams.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined)}
+                                                                            value={formatGrindSize(displayOverlay?.grindSize || editableParams.grindSize, settings.grindType, settings.customGrinders)}
                                                                             onChange={(v) => handleParamChange('grindSize', v)}
                                                                             unit=""
                                                                         />
@@ -740,7 +740,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                 <span className="whitespace-nowrap">{parameterInfo.params.ratio}</span>
                                                                 <span className="shrink-0">·</span>
                                                                 <span className="whitespace-nowrap">
-                                                                    {formatGrindSize(parameterInfo.params.grindSize || "", settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined)}
+                                                                    {formatGrindSize(parameterInfo.params.grindSize || "", settings.grindType, settings.customGrinders)}
                                                                 </span>
                                                                 <span className="shrink-0">·</span>
                                                                 <span className="whitespace-nowrap">{parameterInfo.params.temp}</span>

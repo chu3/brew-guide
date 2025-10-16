@@ -227,11 +227,11 @@ export function useBrewingContent({
 						];
 					} else {
 						// 传统方案显示: 水粉比、总时长、研磨度
-						items = [
-							`水粉比 ${method.params.ratio}`,
-							`总时长 ${formatTime(totalTime, true)}`,
-							`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined)}`,
-						];
+					items = [
+						`水粉比 ${method.params.ratio}`,
+						`总时长 ${formatTime(totalTime, true)}`,
+						`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders)}`,
+					];
 					}
 
 					return {
@@ -274,11 +274,11 @@ export function useBrewingContent({
 						];
 					} else {
 						// 传统方案显示: 水粉比、总时长、研磨度
-						items = [
-							`水粉比 ${method.params.ratio}`,
-							`总时长 ${formatTime(totalTime, true)}`,
-							`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined)}`,
-						];
+					items = [
+						`水粉比 ${method.params.ratio}`,
+						`总时长 ${formatTime(totalTime, true)}`,
+						`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders)}`,
+					];
 					}
 
 					return {

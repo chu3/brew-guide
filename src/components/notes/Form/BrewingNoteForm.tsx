@@ -11,7 +11,7 @@ import { Camera, Image as ImageIcon, X } from 'lucide-react'
 import { equipmentList, commonMethods, type Method, type CustomEquipment } from '@/lib/core/config'
 import { loadCustomEquipments } from '@/lib/managers/customEquipments'
 import { loadCustomMethods } from '@/lib/managers/customMethods'
-import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit } from '@/lib/utils/grindUtils'
+import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
 import { getEquipmentNameById, getEquipmentIdByName } from '@/lib/utils/equipmentUtils'
 import { SettingsOptions } from '@/components/settings/Settings'
 import { CustomFlavorDimensionsManager, FlavorDimension } from '@/lib/managers/customFlavorDimensions'
@@ -1108,8 +1108,9 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                 )}
                             </div>
                         )}
-                        <div className="grid grid-cols-4 gap-6">
-                            <div className="relative">
+                        <div className="grid grid-cols-5 gap-2">
+                            {/* 咖啡量 */}
+                            <div className="relative min-w-0">
                                 <input
                                     id="coffee-amount"
                                     name="coffeeAmount"
@@ -1117,14 +1118,16 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                     inputMode="decimal"
                                     value={numericValues.coffee}
                                     onChange={(e) => handleCoffeeChange(e.target.value)}
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-4"
+                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
                                     placeholder="15"
                                 />
-                                <span className="absolute right-0 bottom-2 text-xs text-neutral-400 dark:text-neutral-500">g</span>
+                                <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">g</span>
                             </div>
-                            <div className="relative overflow-hidden">
+                            
+                            {/* 粉水比 */}
+                            <div className="relative min-w-0">
                                 <div className="flex items-center">
-                                    <span className="text-xs text-neutral-400 dark:text-neutral-500 mr-1 flex-shrink-0">1:</span>
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mr-0.5 flex-shrink-0">1:</span>
                                     <input
                                         id="coffee-ratio"
                                         name="coffeeRatio"
@@ -1137,18 +1140,68 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                     />
                                 </div>
                             </div>
-                            <div>
+                            
+                            {/* 磨豆机选择器 */}
+                            {settings && (
+                                <div className="min-w-0">
+                                    <Select
+                                        value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}
+                                        onValueChange={(newGrinderId) => {
+                                            const { grinderId: oldGrinderId, value: currentValue } = parseGrindSize(methodParams.grindSize);
+                                            const oldGrinder = oldGrinderId || 'generic';
+                                            
+                                            // 使用智能转换函数
+                                            const newGrindSizeValue = smartConvertGrindSize(
+                                                currentValue,
+                                                oldGrinder,
+                                                newGrinderId,
+                                                settings?.customGrinders
+                                            );
+
+                                            setMethodParams({
+                                                ...methodParams,
+                                                grindSize: combineGrindSize(newGrinderId, newGrindSizeValue)
+                                            });
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs">
+                                            <SelectValue placeholder="磨豆机" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                                            {getMyGrinders(
+                                                settings.myGrinders || ['generic'],
+                                                settings.customGrinders
+                                            ).map((grinder) => (
+                                                <SelectItem key={grinder.id} value={grinder.id}>
+                                                    {grinder.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                            
+                            {/* 研磨度值 */}
+                            <div className="min-w-0">
                                 <input
                                     id="grind-size"
                                     name="grindSize"
                                     type="text"
-                                    value={settings ? formatGrindSize(methodParams.grindSize, settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined) : methodParams.grindSize}
-                                    onChange={(e) => setMethodParams({ ...methodParams, grindSize: e.target.value })}
+                                    value={parseGrindSize(methodParams.grindSize).value}
+                                    onChange={(e) => {
+                                        const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                        setMethodParams({
+                                            ...methodParams,
+                                            grindSize: combineGrindSize(grinderId, e.target.value)
+                                        });
+                                    }}
                                     className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
-                                    placeholder={settings && hasSpecificGrindScale(settings.grindType) ? `8${getGrindScaleUnit(settings.grindType)}` : '中细'}
+                                    placeholder="中细"
                                 />
                             </div>
-                            <div className="relative">
+                            
+                            {/* 水温 */}
+                            <div className="relative min-w-0">
                                 <input
                                     id="water-temperature"
                                     name="waterTemperature"
@@ -1156,10 +1209,10 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                     inputMode="decimal"
                                     value={numericValues.temp}
                                     onChange={(e) => handleTempChange(e.target.value)}
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-8"
+                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-6"
                                     placeholder="92"
                                 />
-                                <span className="absolute right-0 bottom-2 text-xs text-neutral-400 dark:text-neutral-500">°C</span>
+                                <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">°C</span>
                             </div>
                         </div>
                     </div>

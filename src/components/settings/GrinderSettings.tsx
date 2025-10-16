@@ -2,11 +2,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { availableGrinders } from '@/lib/core/config'
-import { getCategorizedGrindSizes } from '@/lib/utils/grindUtils'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectSeparator } from '@/components/coffee-bean/ui/select'
+import { getCategorizedGrindSizes, getMyGrinders } from '@/lib/utils/grindUtils'
 import { SettingsOptions, CustomGrinder } from './Settings'
 import hapticsUtils from '@/lib/ui/haptics'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Plus } from 'lucide-react'
 
 
 interface GrinderSettingsProps {
@@ -23,14 +22,20 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     // 历史栈管理
     const onCloseRef = React.useRef(onClose)
     onCloseRef.current = onClose
-    
+
     useEffect(() => {
         window.history.pushState({ modal: 'grinder-settings' }, '')
-        
+
         const handlePopState = () => onCloseRef.current()
         window.addEventListener('popstate', handlePopState)
-        
-        return () => window.removeEventListener('popstate', handlePopState)
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState)
+            // 组件卸载时清理动画帧
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current)
+            }
+        }
     }, []) // 空依赖数组，确保只在挂载时执行一次
 
     // 关闭处理
@@ -56,9 +61,18 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
 
     // 状态管理
     const [isCreatingCustom, setIsCreatingCustom] = useState(false)
+    const [isAddingGrinder, setIsAddingGrinder] = useState(false) // 是否正在添加磨豆机
     const [editingCustomId, setEditingCustomId] = useState<string | null>(null)
     const [previousGrinderType, setPreviousGrinderType] = useState<string>('generic')
     const [pendingGrinderId, setPendingGrinderId] = useState<string | null>(null)
+    const [expandedGrinderId, setExpandedGrinderId] = useState<string | null>(null) // 展开的磨豆机ID
+    
+    // 侧滑删除相关状态
+    const [swipedGrinderId, setSwipedGrinderId] = useState<string | null>(null)
+    const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+    const [touchOffset, setTouchOffset] = useState(0)
+    const rafIdRef = React.useRef<number | null>(null) // 用于存储 requestAnimationFrame ID
+    
     const [customGrinderForm, setCustomGrinderForm] = useState({
         name: '',
         unit: '', // 添加研磨度单位字段
@@ -135,6 +149,133 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
         return [...availableGrinders, ...customGrinders, addCustomOption]
     }, [settings.customGrinders])
 
+    // 获取可添加的磨豆机（排除已添加的）
+    const availableToAdd = useMemo(() => {
+        const myGrinderIds = settings.myGrinders || ['generic']
+        return allGrinders.filter(g =>
+            g.id !== 'add_custom' && !myGrinderIds.includes(g.id)
+        )
+    }, [allGrinders, settings.myGrinders])
+
+    // 添加磨豆机到我的列表
+    const addGrinderToMyList = (grinderId: string) => {
+        const currentList = settings.myGrinders || ['generic']
+        if (!currentList.includes(grinderId)) {
+            handleChange('myGrinders', [...currentList, grinderId])
+            if (settings.hapticFeedback) {
+                hapticsUtils.light()
+            }
+        }
+        setIsAddingGrinder(false)
+    }
+
+    // 从我的列表移除磨豆机
+    const removeGrinderFromMyList = (grinderId: string) => {
+        // 不允许移除通用磨豆机
+        if (grinderId === 'generic') {
+            alert('不能移除"通用"磨豆机')
+            return
+        }
+
+        const currentList = settings.myGrinders || ['generic']
+        const updatedList = currentList.filter(id => id !== grinderId)
+
+        // 确保至少保留一个磨豆机
+        if (updatedList.length === 0) {
+            alert('至少需要保留一个磨豆机')
+            return
+        }
+
+        // 先重置侧滑状态
+        resetSwipe()
+
+        // 然后执行删除
+        handleChange('myGrinders', updatedList)
+
+        // 如果当前选中的磨豆机被移除，切换到通用
+        if (settings.grindType === grinderId) {
+            handleChange('grindType', 'generic')
+        }
+
+        if (settings.hapticFeedback) {
+            hapticsUtils.light()
+        }
+    }
+
+    // 侧滑删除相关函数
+    const handleTouchStart = (e: React.TouchEvent, grinderId: string) => {
+        // 不处理通用磨豆机
+        if (grinderId === 'generic') return
+        
+        setTouchStart({
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        })
+        setSwipedGrinderId(grinderId)
+    }
+
+    const handleTouchMove = (e: React.TouchEvent, grinderId: string) => {
+        if (!touchStart || grinderId !== swipedGrinderId) return
+
+        // 取消之前的动画帧
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current)
+        }
+
+        // 使用 requestAnimationFrame 优化性能
+        rafIdRef.current = requestAnimationFrame(() => {
+            const currentX = e.touches[0].clientX
+            const currentY = e.touches[0].clientY
+            const deltaX = touchStart.x - currentX
+            const deltaY = Math.abs(touchStart.y - currentY)
+
+            // 如果垂直滑动距离大于水平滑动，认为是滚动操作，不处理
+            if (deltaY > Math.abs(deltaX)) {
+                return
+            }
+
+            // 只允许向左滑动，且最大滑动距离为 80px
+            if (deltaX > 0) {
+                setTouchOffset(Math.min(deltaX, 80))
+            } else {
+                setTouchOffset(0)
+            }
+        })
+    }
+
+    const handleTouchEnd = () => {
+        // 清理动画帧
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current)
+            rafIdRef.current = null
+        }
+
+        // 如果滑动超过 40px，则保持显示删除按钮，否则回弹
+        if (touchOffset > 40) {
+            setTouchOffset(80)
+            if (settings.hapticFeedback) {
+                hapticsUtils.light()
+            }
+        } else {
+            setTouchOffset(0)
+            setSwipedGrinderId(null)
+        }
+        setTouchStart(null)
+    }
+
+    // 重置侧滑状态
+    const resetSwipe = () => {
+        // 清理动画帧
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current)
+            rafIdRef.current = null
+        }
+        
+        setTouchOffset(0)
+        setSwipedGrinderId(null)
+        setTouchStart(null)
+    }
+
     // 生成自定义磨豆机ID
     const generateCustomGrinderId = () => {
         const timestamp = Date.now()
@@ -202,7 +343,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     }
 
     // 保存自定义磨豆机
-    const saveCustomGrinder = () => {
+    const saveCustomGrinder = async () => {
         if (!customGrinderForm.name.trim()) {
             alert('请输入磨豆机名称')
             return
@@ -232,14 +373,14 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                         ...grinder,
                         name: customGrinderForm.name,
                         grindSizes: finalGrindSizes
-                      }
+                    }
                     : grinder
             )
 
             // 设置待处理的磨豆机ID
             setPendingGrinderId(editingCustomId)
             // 更新磨豆机列表
-            handleChange('customGrinders', updatedGrinders)
+            await handleChange('customGrinders', updatedGrinders)
         } else {
             // 创建新磨豆机
             const newGrinderId = generateCustomGrinderId()
@@ -252,10 +393,31 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
 
             const updatedGrinders = [...customGrinders, newGrinder]
 
+            // 自动添加到我的磨豆机列表
+            const currentMyGrinders = settings.myGrinders || ['generic']
+            const updatedMyGrinders = [...currentMyGrinders, newGrinderId]
+
+            // 一次性保存两个字段到存储
+            const newSettings = {
+                ...settings,
+                customGrinders: updatedGrinders,
+                myGrinders: updatedMyGrinders
+            }
+            
+            // 保存到存储
+            const { Storage } = await import('@/lib/core/storage');
+            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
+            
+            // 触发自定义事件
+            window.dispatchEvent(new CustomEvent('storageChange', {
+                detail: { key: 'brewGuideSettings' }
+            }))
+            
+            // 通过事件通知父组件更新（这样父组件会重新加载设置）
+            window.dispatchEvent(new CustomEvent('settingsReload'))
+            
             // 设置待处理的磨豆机ID
             setPendingGrinderId(newGrinderId)
-            // 更新磨豆机列表
-            handleChange('customGrinders', updatedGrinders)
         }
 
         // 重置表单
@@ -264,18 +426,39 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     }
 
     // 删除自定义磨豆机
-    const deleteCustomGrinder = (grinderId: string) => {
+    const deleteCustomGrinder = async (grinderId: string) => {
         if (confirm('确定要删除这个自定义磨豆机吗？')) {
             const customGrinders = settings.customGrinders || []
             const updatedGrinders = customGrinders.filter(grinder => grinder.id !== grinderId)
 
-            // 如果当前选中的是被删除的磨豆机，先切换到通用
-            if (settings.grindType === grinderId) {
-                handleChange('grindType', 'generic')
+            // 从我的磨豆机列表中移除
+            const currentMyGrinders = settings.myGrinders || ['generic']
+            const updatedMyGrinders = currentMyGrinders.filter(id => id !== grinderId)
+
+            // 一次性更新所有相关设置
+            const newSettings = {
+                ...settings,
+                customGrinders: updatedGrinders,
+                myGrinders: updatedMyGrinders,
+                // 如果当前选中的是被删除的磨豆机，切换到通用
+                grindType: settings.grindType === grinderId ? 'generic' : settings.grindType
             }
 
-            // 然后删除磨豆机
-            handleChange('customGrinders', updatedGrinders)
+            // 保存到存储
+            const { Storage } = await import('@/lib/core/storage');
+            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
+
+            // 触发自定义事件
+            window.dispatchEvent(new CustomEvent('storageChange', {
+                detail: { key: 'brewGuideSettings' }
+            }))
+
+            // 通知父组件重新加载设置
+            window.dispatchEvent(new CustomEvent('settingsReload'))
+
+            if (settings.hapticFeedback) {
+                hapticsUtils.light()
+            }
         }
     }
 
@@ -317,7 +500,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     }
 
     // 导入自定义磨豆机
-    const importCustomGrinder = () => {
+    const importCustomGrinder = async () => {
         const jsonString = prompt('请粘贴磨豆机配置的 JSON 数据：')
         if (!jsonString) return
 
@@ -353,12 +536,33 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
             }
 
             const customGrinders = settings.customGrinders || []
+            const updatedGrinders = [...customGrinders, newGrinder]
 
-            // 设置待处理的磨豆机ID，导入成功后自动选择
+            // 自动添加到我的磨豆机列表
+            const currentMyGrinders = settings.myGrinders || ['generic']
+            const updatedMyGrinders = [...currentMyGrinders, newGrinderId]
+
+            // 一次性保存两个字段到存储
+            const newSettings = {
+                ...settings,
+                customGrinders: updatedGrinders,
+                myGrinders: updatedMyGrinders
+            }
+            
+            // 保存到存储
+            const { Storage } = await import('@/lib/core/storage');
+            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
+            
+            // 触发自定义事件
+            window.dispatchEvent(new CustomEvent('storageChange', {
+                detail: { key: 'brewGuideSettings' }
+            }))
+            
+            // 通过事件通知父组件更新（这样父组件会重新加载设置）
+            window.dispatchEvent(new CustomEvent('settingsReload'))
+            
+            // 设置待处理的磨豆机ID
             setPendingGrinderId(newGrinderId)
-
-            // 更新磨豆机列表
-            handleChange('customGrinders', [...customGrinders, newGrinder])
 
             alert('磨豆机配置导入成功！')
         } catch (_error) {
@@ -366,152 +570,111 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
         }
     }
 
-    // 移除未使用的彩带特效函数
+    // 渲染磨豆机参考信息（用于列表项内）
+    const renderGrinderReferenceInline = (grinderId: string): React.ReactElement | null => {
+        const selectedGrinder = allGrinders.find(g => g.id === grinderId);
 
-    // 获取当前选中磨豆机的显示名称（使用 useMemo 缓存结果）
-    const currentGrinderDisplayName = useMemo(() => {
-        if (settings.grindType === 'add_custom') {
-            return editingCustomId ? '编辑自定义磨豆机' : '添加自定义磨豆机';
-        }
-
-        const selectedGrinder = allGrinders.find(g => g.id === settings.grindType);
-        return selectedGrinder ? selectedGrinder.name : '选择磨豆机';
-    }, [settings.grindType, allGrinders, editingCustomId]);
-
-    // 处理磨豆机型号变更
-    const handleGrinderChange = (value: string) => {
-        // 如果选择的是"添加自定义磨豆机"，则开始创建流程
-        if (value === 'add_custom') {
-            startCreatingCustomGrinder();
-            handleChange('grindType', 'add_custom');
-            return;
-        }
-
-        // 如果切换到其他磨豆机，取消创建/编辑状态
-        if (isCreatingCustom) {
-            setIsCreatingCustom(false);
-            setEditingCustomId(null);
-        }
-
-        handleChange('grindType', value);
-
-        // 当选择非通用磨豆机时可以提供反馈（可选）
-        if (value !== 'generic' && value !== 'add_custom') {
-            // 选择特定磨豆机时提供触感反馈
-            if (settings.hapticFeedback) {
-                hapticsUtils.medium();
-            }
-        }
-    };
-
-    // 渲染磨豆机参考信息
-    const renderGrinderReference = () => {
-        if (settings.grindType === 'add_custom') {
+        if (!selectedGrinder || grinderId === 'generic' || !selectedGrinder.grindSizes || Object.keys(selectedGrinder.grindSizes).length === 0) {
             return null;
         }
 
-        const selectedGrinder = allGrinders.find(g => g.id === settings.grindType);
-
-        if (!selectedGrinder || !selectedGrinder.grindSizes || Object.keys(selectedGrinder.grindSizes).length === 0) {
-            return null;
-        }
-
-        const { basicGrindSizes, applicationGrindSizes } = getCategorizedGrindSizes(settings.grindType, settings.customGrinders as Record<string, unknown>[] | undefined);
-
-        const elements = [];
-
-        // 基础研磨度部分
-        elements.push(
-            <div key="basic-grind-sizes" className="mb-3">
-                <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
-                    基础研磨度:
-                </p>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                    {Object.entries(basicGrindSizes).map(([key, value]) => (
-                        <div key={key} className="flex justify-between text-sm text-neutral-700 dark:text-neutral-300">
-                            <span className="font-medium">{key}</span>
-                            <span>{value}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-
-        // 特定应用研磨度部分
-        if (Object.keys(applicationGrindSizes).length > 0) {
-            elements.push(
-                <div key="application-grind-sizes" className="mb-3">
-                    <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
-                        特定应用研磨度:
-                    </p>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                        {Object.entries(applicationGrindSizes).map(([key, value]) => (
-                            <div key={key} className="flex justify-between text-sm text-neutral-700 dark:text-neutral-300">
-                                <span className="font-medium">{key}</span>
-                                <span>{value as string}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
-
-        // 自定义磨豆机操作按钮
-        if ('isCustom' in selectedGrinder && selectedGrinder.isCustom) {
-            elements.push(
-                <div key="custom-grinder-actions" className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-                        自定义磨豆机操作
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            onClick={() => startEditingCustomGrinder(selectedGrinder as CustomGrinder)}
-                            className="px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                        >
-                            编辑
-                        </button>
-                        <button
-                            onClick={() => deleteCustomGrinder(selectedGrinder.id)}
-                            className="px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                        >
-                            删除
-                        </button>
-                        <button
-                            onClick={() => exportCustomGrinder(selectedGrinder as CustomGrinder)}
-                            className="px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                        >
-                            导出
-                        </button>
-                    </div>
-                </div>
-            );
-        }
-
-        // 数据来源和用户调研信息 - 对所有磨豆机显示
-        elements.push(
-            <div key="data-source" className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    数据来源：网络收集和用户调研，仅供参考
-                </p>
-                <div className="mt-2">
-                    <a
-                        href="https://wj.qq.com/s2/19815833/44ae/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 dark:text-blue-400 flex items-center"
-                    >
-                        <span>→ 参与研磨度调研问卷</span>
-                    </a>
-                </div>
-            </div>
-        );
+        const { basicGrindSizes, applicationGrindSizes } = getCategorizedGrindSizes(grinderId, settings.customGrinders);
+        const isExpanded = expandedGrinderId === grinderId;
 
         return (
-            <div className="mt-3 border-l-2 border-neutral-300 dark:border-neutral-700 pl-4 py-2">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-                    {selectedGrinder.name} 研磨度参考
-                </p>
-                {elements}
+            <div
+                className={`overflow-hidden mx-3 transition-[max-height] duration-300 ease-in-out ${isExpanded ? 'max-h-[800px]' : 'max-h-0'
+                    }`}
+            >
+                <div className={`pb-3 space-y-3 transition-opacity duration-300 ease-in-out ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
+                    {/* 基础研磨度部分 */}
+                    {Object.keys(basicGrindSizes).length > 0 ? (
+                        <div>
+                            <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
+                                基础研磨度:
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                {Object.entries(basicGrindSizes).map(([key, value]) => (
+                                    <div key={key} className="flex justify-between text-xs text-neutral-700 dark:text-neutral-300">
+                                        <span className="font-medium">{key}</span>
+                                        <span>{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* 特定应用研磨度部分 */}
+                    {Object.keys(applicationGrindSizes).length > 0 ? (
+                        <div>
+                            <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
+                                特定应用研磨度:
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                {Object.entries(applicationGrindSizes).map(([key, value]) => (
+                                    <div key={key} className="flex justify-between text-xs text-neutral-700 dark:text-neutral-300">
+                                        <span className="font-medium">{key}</span>
+                                        <span>{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* 自定义磨豆机操作按钮 */}
+                    {('isCustom' in selectedGrinder && selectedGrinder.isCustom) ? (
+                        <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                                操作
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        startEditingCustomGrinder(selectedGrinder as CustomGrinder);
+                                    }}
+                                    className="px-2 py-1 text-xs font-medium bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+                                >
+                                    编辑
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteCustomGrinder(selectedGrinder.id);
+                                    }}
+                                    className="px-2 py-1 text-xs font-medium bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+                                >
+                                    删除
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        exportCustomGrinder(selectedGrinder as CustomGrinder);
+                                    }}
+                                    className="px-2 py-1 text-xs font-medium bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+                                >
+                                    导出
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* 数据来源信息 */}
+                    <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                            数据来源：网络收集和用户调研，仅供参考
+                        </p>
+                        <a
+                            href="https://wj.qq.com/s2/19815833/44ae/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            → 参与研磨度调研问卷
+                        </a>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -535,7 +698,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                     <ChevronLeft className="h-5 w-5" />
                 </button>
                 <h2 className="text-md font-medium text-neutral-800 dark:text-neutral-200">
-                    研磨度设置
+                    磨豆机设置
                 </h2>
             </div>
 
@@ -545,76 +708,160 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                 <div className="sticky top-0 z-10 h-12 w-full bg-linear-to-b from-neutral-50 dark:from-neutral-900 to-transparent pointer-events-none first:border-b-0"></div>
 
                 {/* 设置内容 */}
-                <div className="px-6 py-4 -mt-4">
-                    <div className="flex items-center justify-between py-2">
-                        <label
-                            htmlFor={`grinder-select-${settings.grindType}`}
-                            className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
-                        >
-                            磨豆机型号
-                        </label>
-                        <div className="relative">
-                            <Select
-                                value={settings.grindType}
-                                onValueChange={handleGrinderChange}
-                            >
-                                <SelectTrigger
-                                    id={`grinder-button-${settings.grindType}`}
-                                    variant="minimal"
-                                    className="w-auto text-right text-sm text-neutral-600 dark:text-neutral-400"
+                <div className="px-6 py-4 -mt-4" onClick={resetSwipe}>
+                    {/* 我的磨豆机列表 */}
+                    {!isCreatingCustom && !isAddingGrinder && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                    磨豆机列表 ({(settings.myGrinders || ['generic']).length})
+                                </h3>
+                                <button
+                                    onClick={() => setIsAddingGrinder(true)}
+                                    className="flex items-center gap-1 text-sm font-medium text-neutral-800 dark:text-neutral-200"
                                 >
-                                    <SelectValue placeholder="选择磨豆机">
-                                        {currentGrinderDisplayName}
-                                    </SelectValue>
-                                    <svg
-                                        className="h-4 w-4 ml-1 text-neutral-500"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 20 20"
-                                        fill="currentColor"
+                                    <Plus className="h-3.5 w-3.5" />
+                                    添加磨豆机
+                                </button>
+                            </div>
+
+                            {/* 磨豆机列表 */}
+                            <div className="space-y-2">
+                                {getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders).map((grinder) => (
+                                    <div
+                                        key={grinder.id}
+                                        className="relative bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
                                     >
-                                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                                    </svg>
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[40vh] overflow-y-auto">
-                                    {availableGrinders.map((grinder) => (
-                                        <SelectItem
-                                            key={grinder.id}
-                                            value={grinder.id}
-                                        >
-                                            {grinder.name}
-                                        </SelectItem>
-                                    ))}
-
-                                    {/* 自定义磨豆机 */}
-                                    {settings.customGrinders && settings.customGrinders.length > 0 && (
-                                        <>
-                                            <SelectSeparator />
-                                            {settings.customGrinders.map((grinder) => (
-                                                <SelectItem
-                                                    key={grinder.id}
-                                                    value={grinder.id}
+                                        {/* 删除按钮背景层 */}
+                                        {grinder.id !== 'generic' && (
+                                            <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center">
+                                                <button
+                                                    onClick={() => {
+                                                        removeGrinderFromMyList(grinder.id);
+                                                    }}
+                                                    className="text-white text-sm font-medium"
                                                 >
-                                                    {grinder.name}
-                                                </SelectItem>
-                                            ))}
-                                        </>
-                                    )}
-
-                                    <SelectSeparator />
-                                    <SelectItem value="add_custom">
-                                        <span className="text-neutral-600 dark:text-neutral-400">+ 添加自定义磨豆机</span>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
+                                                    删除
+                                                </button>
+                                            </div>
+                                        )}
+                                        
+                                        {/* 可滑动的内容层 */}
+                                        <div
+                                            className="relative bg-neutral-100 dark:bg-neutral-800 transition-transform duration-200 ease-out"
+                                            style={{
+                                                transform: swipedGrinderId === grinder.id ? `translateX(-${touchOffset}px)` : 'translateX(0)'
+                                            }}
+                                            onTouchStart={(e) => {
+                                                e.stopPropagation();
+                                                handleTouchStart(e, grinder.id);
+                                            }}
+                                            onTouchMove={(e) => {
+                                                e.stopPropagation();
+                                                handleTouchMove(e, grinder.id);
+                                            }}
+                                            onTouchEnd={(e) => {
+                                                e.stopPropagation();
+                                                handleTouchEnd();
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="flex items-center justify-between p-3">
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                                        {grinder.name}
+                                                    </p>
+                                                </div>
+                                                {/* 查看研磨度按钮 */}
+                                                {grinder.id !== 'generic' && grinder.grindSizes && Object.keys(grinder.grindSizes).length > 0 && (
+                                                    <button
+                                                        onClick={() => {
+                                                            resetSwipe();
+                                                            setExpandedGrinderId(expandedGrinderId === grinder.id ? null : grinder.id);
+                                                            if (settings.hapticFeedback) {
+                                                                hapticsUtils.light();
+                                                            }
+                                                        }}
+                                                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+                                                    >
+                                                        {expandedGrinderId === grinder.id ? '收起' : '查看'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {/* 研磨度参考信息 */}
+                                            {grinder.id !== 'generic' && renderGrinderReferenceInline(grinder.id)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Display grinder specific reference grind sizes if available */}
-                    {settings.grindType === 'add_custom' && (
-                        <div className="mt-3 border-l-2 border-neutral-300 dark:border-neutral-700 pl-4 py-2">
-                            <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-                                {editingCustomId ? '编辑自定义磨豆机' : '创建自定义磨豆机'}
-                            </p>
+                    {/* 添加磨豆机界面 */}
+                    {isAddingGrinder && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                    选择要添加的磨豆机
+                                </h3>
+                                <button
+                                    onClick={() => setIsAddingGrinder(false)}
+                                    className="flex items-center gap-1 text-sm font-medium text-neutral-800 dark:text-neutral-200"
+                                >
+                                    取消
+                                </button>
+                            </div>
+
+                            {availableToAdd.length > 0 ? (
+                                <div className="space-y-2">
+                                    {availableToAdd.map((grinder) => (
+                                        <button
+                                            key={grinder.id}
+                                            onClick={() => addGrinderToMyList(grinder.id)}
+                                            className="w-full flex items-center justify-between p-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors group"
+                                        >
+                                            <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                                {grinder.name}
+                                            </p>
+                                            <Plus className="h-4 w-4 text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors" />
+                                        </button>
+                                    ))}
+                                    {/* 创建自定义磨豆机按钮 */}
+                                    <button
+                                        onClick={() => {
+                                            setIsAddingGrinder(false);
+                                            startCreatingCustomGrinder();
+                                        }}
+                                        className="w-full py-2.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 border border-dashed border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-600 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+                                    >
+                                        + 创建自定义磨豆机
+                                    </button>
+                                </div>
+
+                            ) : (
+                                <div className="text-center py-8 text-sm text-neutral-500 dark:text-neutral-400">
+                                    所有可用的磨豆机都已添加
+                                </div>
+                            )}
+
+
+                        </div>
+                    )}
+
+                    {/* 创建/编辑自定义磨豆机界面 */}
+                    {isCreatingCustom && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                    {editingCustomId ? '编辑自定义磨豆机' : '创建自定义磨豆机'}
+                                </h3>
+                                <button
+                                    onClick={cancelEditing}
+                                    className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                                >
+                                    取消
+                                </button>
+                            </div>
 
                             {/* 磨豆机名称输入 */}
                             <div className="mb-4">
@@ -642,8 +889,8 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                             key={unit}
                                             onClick={() => updateUnit(unit)}
                                             className={`px-2 py-1 text-xs font-medium rounded transition-colors ${customGrinderForm.unit === unit
-                                                    ? 'bg-neutral-700 dark:bg-neutral-600 text-white'
-                                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700'}`}
+                                                ? 'bg-neutral-700 dark:bg-neutral-600 text-white'
+                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700'}`}
                                         >
                                             {unit}
                                         </button>
@@ -731,31 +978,24 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                             </div>
 
                             {/* 操作按钮 */}
-                            <div className="flex gap-2 mt-4">
+                            <div className="flex gap-2">
                                 <button
                                     onClick={saveCustomGrinder}
-                                    className="px-3 py-1.5 text-xs font-medium bg-neutral-700 dark:bg-neutral-600 text-white rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-500 transition-colors"
+                                    className="flex-1 py-2 text-sm font-medium bg-neutral-700 dark:bg-neutral-600 text-white rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-500 transition-colors"
                                 >
                                     保存
                                 </button>
                                 <button
-                                    onClick={cancelEditing}
-                                    className="px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                                >
-                                    取消
-                                </button>
-                                <button
                                     onClick={importCustomGrinder}
-                                    className="px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                                    className="px-4 py-2 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                                 >
-                                    导入配置
+                                    导入
                                 </button>
                             </div>
                         </div>
                     )}
 
                     {/* 显示选中磨豆机的参考研磨度 */}
-                    {renderGrinderReference()}
                 </div>
             </div>
         </div>
