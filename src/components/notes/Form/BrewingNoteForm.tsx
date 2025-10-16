@@ -11,7 +11,7 @@ import { Camera, Image as ImageIcon, X } from 'lucide-react'
 import { equipmentList, commonMethods, type Method, type CustomEquipment } from '@/lib/core/config'
 import { loadCustomEquipments } from '@/lib/managers/customEquipments'
 import { loadCustomMethods } from '@/lib/managers/customMethods'
-import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
+import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize, hasOnlyGenericGrinder, findGrinder } from '@/lib/utils/grindUtils'
 import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { getEquipmentNameById, getEquipmentIdByName } from '@/lib/utils/equipmentUtils'
@@ -1196,12 +1196,13 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                 </div>
                             </div>
                             
-                            {/* 磨豆机选择器 - 如果方案有指定磨豆机或用户有多个磨豆机时显示 */}
+                            {/* 磨豆机选择器 - 如果是编辑模式、方案有指定磨豆机或用户有多个磨豆机时显示 */}
                             {settings && (() => {
+                                const isEditingNote = !!initialData.id; // 判断是否在编辑笔记
                                 const { grinderId } = parseGrindSize(methodParams.grindSize);
                                 const hasMethodGrinder = grinderId && grinderId !== 'generic';
                                 const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
-                                return hasMethodGrinder || hasMultipleGrinders;
+                                return isEditingNote || hasMethodGrinder || hasMultipleGrinders;
                             })() && (
                                 <div className="min-w-0">
                                     <Select
@@ -1236,14 +1237,41 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                             <SelectValue placeholder="磨豆机" />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
-                                            {getMyGrinders(
-                                                settings.myGrinders || ['generic'],
-                                                settings.customGrinders
-                                            ).map((grinder) => (
-                                                <SelectItem key={grinder.id} value={grinder.id}>
-                                                    {grinder.name}
-                                                </SelectItem>
-                                            ))}
+                                            {(() => {
+                                                const myGrinders = getMyGrinders(
+                                                    settings.myGrinders || ['generic'],
+                                                    settings.customGrinders
+                                                );
+                                                
+                                                // 如果方案有指定磨豆机但不在用户列表中，添加它
+                                                const { grinderId: methodGrinderId } = parseGrindSize(methodParams.grindSize);
+                                                const methodGrinderInMyList = myGrinders.some(g => g.id === methodGrinderId);
+                                                
+                                                if (methodGrinderId && methodGrinderId !== 'generic' && !methodGrinderInMyList) {
+                                                    // 尝试从所有磨豆机中查找（包括已删除的自定义磨豆机）
+                                                    const methodGrinder = findGrinder(methodGrinderId, settings.customGrinders, false);
+                                                    
+                                                    if (methodGrinder) {
+                                                        // 将方案的磨豆机添加到列表末尾
+                                                        return [
+                                                            ...myGrinders.map((grinder) => (
+                                                                <SelectItem key={grinder.id} value={grinder.id}>
+                                                                    {grinder.name}
+                                                                </SelectItem>
+                                                            )),
+                                                            <SelectItem key={methodGrinder.id} value={methodGrinder.id}>
+                                                                {methodGrinder.name}
+                                                            </SelectItem>
+                                                        ];
+                                                    }
+                                                }
+                                                
+                                                return myGrinders.map((grinder) => (
+                                                    <SelectItem key={grinder.id} value={grinder.id}>
+                                                        {grinder.name}
+                                                    </SelectItem>
+                                                ));
+                                            })()}
                                         </SelectContent>
                                     </Select>
                                 </div>
