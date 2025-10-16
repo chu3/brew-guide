@@ -385,10 +385,15 @@ const Settings: React.FC<SettingsProps> = ({
                 const settingsStr = await Storage.get('brewGuideSettings')
                 if (settingsStr) {
                     const loadedSettings = JSON.parse(settingsStr)
-                    setSettings(loadedSettings)
+                    
+                    // 只有当设置真的有变化时才更新状态，避免不必要的重新渲染
+                    const hasChanged = JSON.stringify(settings) !== JSON.stringify(loadedSettings)
+                    if (hasChanged) {
+                        setSettings(loadedSettings)
+                    }
                 }
             } catch (error) {
-                console.error('重新加载设置失败:', error)
+                console.error('[Settings] 重新加载设置失败:', error)
             }
         }
 
@@ -439,27 +444,75 @@ const Settings: React.FC<SettingsProps> = ({
             window.removeEventListener('popstate', handlePopState)
             window.removeEventListener('settingsReload', handleSettingsReload)
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, onClose, showDisplaySettings, showGrinderSettings, showStockSettings, showBeanSettings, 
         showFlavorPeriodSettings, showTimerSettings, showDataSettings, showNotificationSettings, 
         showRandomCoffeeBeanSettings, showSearchSortSettings, showFlavorDimensionSettings])
 
     // showConfetti 函数已移到 GrinderSettings 组件中
 
+    // handleChange 锁，确保串行执行
+    const handleChangeInProgress = React.useRef(false)
+    const handleChangeQueue = React.useRef<Array<() => Promise<void>>>([])
+
     // 处理设置变更
 const handleChange = async <K extends keyof SettingsOptions>(
     key: K,
     value: SettingsOptions[K]
 ) => {
-    // 直接更新设置并保存到存储
-    const newSettings = { ...settings, [key]: value }
-    setSettings(newSettings)
-    const { Storage } = await import('@/lib/core/storage');
-    await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
+    // 如果值没有变化，跳过更新
+    if (JSON.stringify(settings[key]) === JSON.stringify(value)) {
+        return
+    }
 
-    // 触发自定义事件通知其他组件设置已更改
-    window.dispatchEvent(new CustomEvent('storageChange', {
-        detail: { key: 'brewGuideSettings' }
-    }))
+    // 创建执行函数
+    const executeChange = async () => {
+        // 从存储读取最新设置，避免使用过时的 settings 状态
+        const { Storage } = await import('@/lib/core/storage');
+        const currentSettingsStr = await Storage.get('brewGuideSettings')
+        const currentSettings = currentSettingsStr ? JSON.parse(currentSettingsStr) : settings
+
+        // 基于最新的设置更新
+        const newSettings = { ...currentSettings, [key]: value }
+        
+        setSettings(newSettings)
+        
+        await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
+
+        // 触发自定义事件通知其他组件设置已更改
+        window.dispatchEvent(new CustomEvent('storageChange', {
+            detail: { key: 'brewGuideSettings' }
+        }))
+    }
+
+    // 如果有其他 handleChange 正在执行，加入队列
+    if (handleChangeInProgress.current) {
+        return new Promise<void>((resolve) => {
+            handleChangeQueue.current.push(async () => {
+                await executeChange()
+                resolve()
+            })
+        })
+    }
+
+    // 标记为正在执行
+    handleChangeInProgress.current = true
+
+    try {
+        await executeChange()
+    } finally {
+        // 执行完成，检查队列
+        handleChangeInProgress.current = false
+        
+        if (handleChangeQueue.current.length > 0) {
+            const nextChange = handleChangeQueue.current.shift()
+            if (nextChange) {
+                handleChangeInProgress.current = true
+                await nextChange()
+                handleChangeInProgress.current = false
+            }
+        }
+    }
 }
 
     // 执行同步，现在通过事件触发

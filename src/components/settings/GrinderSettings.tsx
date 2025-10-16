@@ -6,6 +6,8 @@ import { getCategorizedGrindSizes, getMyGrinders } from '@/lib/utils/grindUtils'
 import { SettingsOptions, CustomGrinder } from './Settings'
 import hapticsUtils from '@/lib/ui/haptics'
 import { ChevronLeft, Plus } from 'lucide-react'
+import { showToast } from '@/components/common/feedback/LightToast'
+import { GrinderManager } from '@/lib/managers/grinderManager'
 
 
 interface GrinderSettingsProps {
@@ -64,7 +66,6 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     const [isAddingGrinder, setIsAddingGrinder] = useState(false) // 是否正在添加磨豆机
     const [editingCustomId, setEditingCustomId] = useState<string | null>(null)
     const [previousGrinderType, setPreviousGrinderType] = useState<string>('generic')
-    const [pendingGrinderId, setPendingGrinderId] = useState<string | null>(null)
     const [expandedGrinderId, setExpandedGrinderId] = useState<string | null>(null) // 展开的磨豆机ID
     
     // 侧滑删除相关状态
@@ -127,17 +128,6 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
         }));
     }
 
-    // 监听自定义磨豆机列表变化，当有待处理的磨豆机ID时自动选择
-    useEffect(() => {
-        if (pendingGrinderId && settings.customGrinders) {
-            const grinder = settings.customGrinders.find(g => g.id === pendingGrinderId)
-            if (grinder) {
-                handleChange('grindType', pendingGrinderId)
-                setPendingGrinderId(null)
-            }
-        }
-    }, [settings.customGrinders, pendingGrinderId, handleChange])
-
     // 获取所有磨豆机（包括自定义的和添加选项）- 使用 useMemo 缓存
     const allGrinders = useMemo(() => {
         const customGrinders = settings.customGrinders || []
@@ -158,55 +148,44 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     }, [allGrinders, settings.myGrinders])
 
     // 添加磨豆机到我的列表
-    const addGrinderToMyList = (grinderId: string) => {
-        const currentList = settings.myGrinders || ['generic']
-        if (!currentList.includes(grinderId)) {
-            handleChange('myGrinders', [...currentList, grinderId])
+    const addGrinderToMyList = async (grinderId: string) => {
+        try {
+            await GrinderManager.addToMyGrinders(grinderId)
             if (settings.hapticFeedback) {
                 hapticsUtils.light()
             }
+        } catch (error) {
+            console.error('添加磨豆机失败:', error)
+            showToast({
+                type: 'error',
+                title: '添加失败，请重试'
+            })
+        } finally {
+            setIsAddingGrinder(false)
         }
-        setIsAddingGrinder(false)
     }
 
     // 从我的列表移除磨豆机
-    const removeGrinderFromMyList = (grinderId: string) => {
-        // 不允许移除通用磨豆机
-        if (grinderId === 'generic') {
-            alert('不能移除"通用"磨豆机')
-            return
-        }
-
-        const currentList = settings.myGrinders || ['generic']
-        const updatedList = currentList.filter(id => id !== grinderId)
-
-        // 确保至少保留一个磨豆机
-        if (updatedList.length === 0) {
-            alert('至少需要保留一个磨豆机')
-            return
-        }
-
+    const removeGrinderFromMyList = async (grinderId: string) => {
         // 先重置侧滑状态
         resetSwipe()
 
-        // 然后执行删除
-        handleChange('myGrinders', updatedList)
-
-        // 如果当前选中的磨豆机被移除，切换到通用
-        if (settings.grindType === grinderId) {
-            handleChange('grindType', 'generic')
-        }
-
-        if (settings.hapticFeedback) {
-            hapticsUtils.light()
+        try {
+            await GrinderManager.removeFromMyGrinders(grinderId)
+            if (settings.hapticFeedback) {
+                hapticsUtils.light()
+            }
+        } catch (error: unknown) {
+            console.error('删除磨豆机失败:', error)
+            showToast({
+                type: 'warning',
+                title: error instanceof Error ? error.message : '删除失败，请重试'
+            })
         }
     }
 
     // 侧滑删除相关函数
     const handleTouchStart = (e: React.TouchEvent, grinderId: string) => {
-        // 不处理通用磨豆机
-        if (grinderId === 'generic') return
-        
         setTouchStart({
             x: e.touches[0].clientX,
             y: e.touches[0].clientY
@@ -276,12 +255,6 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
         setTouchStart(null)
     }
 
-    // 生成自定义磨豆机ID
-    const generateCustomGrinderId = () => {
-        const timestamp = Date.now()
-        return `custom_grinder_${timestamp}`
-    }
-
     // 开始创建自定义磨豆机
     const startCreatingCustomGrinder = () => {
         // 保存当前选中的磨豆机型号
@@ -345,7 +318,10 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
     // 保存自定义磨豆机
     const saveCustomGrinder = async () => {
         if (!customGrinderForm.name.trim()) {
-            alert('请输入磨豆机名称')
+            showToast({
+                type: 'warning',
+                title: '请输入磨豆机名称'
+            })
             return
         }
 
@@ -363,102 +339,52 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
             }
         });
 
-        const customGrinders = settings.customGrinders || []
-
-        if (editingCustomId) {
-            // 编辑现有磨豆机
-            const updatedGrinders = customGrinders.map(grinder =>
-                grinder.id === editingCustomId
-                    ? {
-                        ...grinder,
-                        name: customGrinderForm.name,
-                        grindSizes: finalGrindSizes
-                    }
-                    : grinder
-            )
-
-            // 设置待处理的磨豆机ID
-            setPendingGrinderId(editingCustomId)
-            // 更新磨豆机列表
-            await handleChange('customGrinders', updatedGrinders)
-        } else {
-            // 创建新磨豆机
-            const newGrinderId = generateCustomGrinderId()
-            const newGrinder: CustomGrinder = {
-                id: newGrinderId,
-                name: customGrinderForm.name,
-                grindSizes: finalGrindSizes,
-                isCustom: true
+        try {
+            if (editingCustomId) {
+                // 编辑现有磨豆机
+                await GrinderManager.updateCustomGrinder(editingCustomId, {
+                    name: customGrinderForm.name,
+                    grindSizes: finalGrindSizes
+                })
+            } else {
+                // 创建新磨豆机
+                await GrinderManager.addCustomGrinder({
+                    name: customGrinderForm.name,
+                    grindSizes: finalGrindSizes
+                })
             }
-
-            const updatedGrinders = [...customGrinders, newGrinder]
-
-            // 自动添加到我的磨豆机列表
-            const currentMyGrinders = settings.myGrinders || ['generic']
-            const updatedMyGrinders = [...currentMyGrinders, newGrinderId]
-
-            // 一次性保存两个字段到存储
-            const newSettings = {
-                ...settings,
-                customGrinders: updatedGrinders,
-                myGrinders: updatedMyGrinders
-            }
-            
-            // 保存到存储
-            const { Storage } = await import('@/lib/core/storage');
-            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
-            
-            // 触发自定义事件
-            window.dispatchEvent(new CustomEvent('storageChange', {
-                detail: { key: 'brewGuideSettings' }
-            }))
-            
-            // 通过事件通知父组件更新（这样父组件会重新加载设置）
-            window.dispatchEvent(new CustomEvent('settingsReload'))
-            
-            // 设置待处理的磨豆机ID
-            setPendingGrinderId(newGrinderId)
-        }
-
-        // 重置表单
-        setIsCreatingCustom(false)
-        setEditingCustomId(null)
-    }
-
-    // 删除自定义磨豆机
-    const deleteCustomGrinder = async (grinderId: string) => {
-        if (confirm('确定要删除这个自定义磨豆机吗？')) {
-            const customGrinders = settings.customGrinders || []
-            const updatedGrinders = customGrinders.filter(grinder => grinder.id !== grinderId)
-
-            // 从我的磨豆机列表中移除
-            const currentMyGrinders = settings.myGrinders || ['generic']
-            const updatedMyGrinders = currentMyGrinders.filter(id => id !== grinderId)
-
-            // 一次性更新所有相关设置
-            const newSettings = {
-                ...settings,
-                customGrinders: updatedGrinders,
-                myGrinders: updatedMyGrinders,
-                // 如果当前选中的是被删除的磨豆机，切换到通用
-                grindType: settings.grindType === grinderId ? 'generic' : settings.grindType
-            }
-
-            // 保存到存储
-            const { Storage } = await import('@/lib/core/storage');
-            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
-
-            // 触发自定义事件
-            window.dispatchEvent(new CustomEvent('storageChange', {
-                detail: { key: 'brewGuideSettings' }
-            }))
-
-            // 通知父组件重新加载设置
-            window.dispatchEvent(new CustomEvent('settingsReload'))
 
             if (settings.hapticFeedback) {
                 hapticsUtils.light()
             }
+
+            // 重置表单
+            setIsCreatingCustom(false)
+            setEditingCustomId(null)
+        } catch (error) {
+            console.error('保存自定义磨豆机失败:', error)
+            showToast({
+                type: 'error',
+                title: '保存失败，请重试'
+            })
+        }
+    }
+
+    // 删除自定义磨豆机
+    const deleteCustomGrinder = async (grinderId: string) => {
+        if (!confirm('确定要删除这个自定义磨豆机吗？')) return
+
+        try {
+            await GrinderManager.deleteCustomGrinder(grinderId)
+            if (settings.hapticFeedback) {
+                hapticsUtils.light()
+            }
+        } catch (error) {
+            console.error('删除自定义磨豆机失败:', error)
+            showToast({
+                type: 'error',
+                title: '删除失败，请重试'
+            })
         }
     }
 
@@ -478,7 +404,10 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
         }
         const jsonString = JSON.stringify(exportData, null, 2)
         navigator.clipboard.writeText(jsonString).then(() => {
-            alert('磨豆机配置已复制到剪贴板！')
+            showToast({
+                type: 'success',
+                title: '磨豆机配置已复制到剪贴板'
+            })
         }).catch(() => {
             // 降级方案：显示文本供用户手动复制
             const textarea = document.createElement('textarea')
@@ -491,9 +420,16 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
             textarea.select()
             try {
                 document.execCommand('copy')
-                alert('磨豆机配置已复制到剪贴板！')
+                showToast({
+                    type: 'success',
+                    title: '磨豆机配置已复制到剪贴板'
+                })
             } catch (_err) {
-                alert('复制失败，请手动复制以下内容：\n\n' + jsonString)
+                showToast({
+                    type: 'error',
+                    title: '复制失败，请重试',
+                    duration: 3000
+                })
             }
             document.body.removeChild(textarea)
         })
@@ -512,10 +448,8 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                 throw new Error('数据格式不正确')
             }
 
-            // 创建新的自定义磨豆机
-            const newGrinderId = generateCustomGrinderId()
-            const newGrinder: CustomGrinder = {
-                id: newGrinderId,
+            // 使用 Manager 添加磨豆机
+            await GrinderManager.addCustomGrinder({
                 name: importData.name,
                 grindSizes: {
                     极细: importData.grindSizes.极细 || '',
@@ -531,42 +465,19 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                     手冲: importData.grindSizes.手冲 || '',
                     法压壶: importData.grindSizes.法压壶 || '',
                     冷萃: importData.grindSizes.冷萃 || ''
-                },
-                isCustom: true
-            }
+                }
+            })
 
-            const customGrinders = settings.customGrinders || []
-            const updatedGrinders = [...customGrinders, newGrinder]
-
-            // 自动添加到我的磨豆机列表
-            const currentMyGrinders = settings.myGrinders || ['generic']
-            const updatedMyGrinders = [...currentMyGrinders, newGrinderId]
-
-            // 一次性保存两个字段到存储
-            const newSettings = {
-                ...settings,
-                customGrinders: updatedGrinders,
-                myGrinders: updatedMyGrinders
-            }
-            
-            // 保存到存储
-            const { Storage } = await import('@/lib/core/storage');
-            await Storage.set('brewGuideSettings', JSON.stringify(newSettings))
-            
-            // 触发自定义事件
-            window.dispatchEvent(new CustomEvent('storageChange', {
-                detail: { key: 'brewGuideSettings' }
-            }))
-            
-            // 通过事件通知父组件更新（这样父组件会重新加载设置）
-            window.dispatchEvent(new CustomEvent('settingsReload'))
-            
-            // 设置待处理的磨豆机ID
-            setPendingGrinderId(newGrinderId)
-
-            alert('磨豆机配置导入成功！')
+            showToast({
+                type: 'success',
+                title: '磨豆机配置导入成功'
+            })
         } catch (_error) {
-            alert('导入失败：JSON 格式不正确或数据不完整')
+            showToast({
+                type: 'error',
+                title: '导入失败：JSON 格式不正确',
+                duration: 3000
+            })
         }
     }
 
@@ -640,6 +551,19 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        const myGrindersList = settings.myGrinders || ['generic'];
+                                        const isLastGrinder = myGrindersList.length === 1;
+                                        
+                                        if (isLastGrinder) {
+                                            if (settings.hapticFeedback) {
+                                                hapticsUtils.light();
+                                            }
+                                            showToast({
+                                                type: 'warning',
+                                                title: '至少需要保留一个磨豆机'
+                                            });
+                                            return;
+                                        }
                                         deleteCustomGrinder(selectedGrinder.id);
                                     }}
                                     className="px-2 py-1 text-xs font-medium bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
@@ -727,45 +651,60 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
 
                             {/* 磨豆机列表 */}
                             <div className="space-y-2">
-                                {getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders).map((grinder) => (
-                                    <div
-                                        key={grinder.id}
-                                        className="relative bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
-                                    >
-                                        {/* 删除按钮背景层 */}
-                                        {grinder.id !== 'generic' && (
+                                {(() => {
+                                    const myGrindersList = settings.myGrinders || ['generic'];
+                                    const grinders = getMyGrinders(myGrindersList, settings.customGrinders);
+                                    
+                                    return grinders.map((grinder) => {
+                                    const isLastGrinder = myGrindersList.length === 1;
+                                    
+                                    return (
+                                        <div
+                                            key={grinder.id}
+                                            className="relative bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
+                                        >
+                                            {/* 删除按钮背景层 */}
                                             <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center">
                                                 <button
-                                                    onClick={() => {
-                                                        removeGrinderFromMyList(grinder.id);
+                                                    onClick={async () => {
+                                                        if (isLastGrinder) {
+                                                            if (settings.hapticFeedback) {
+                                                                hapticsUtils.light();
+                                                            }
+                                                            showToast({
+                                                                type: 'warning',
+                                                                title: '至少需要保留一个磨豆机'
+                                                            });
+                                                            return;
+                                                        }
+                                                        await removeGrinderFromMyList(grinder.id);
                                                     }}
                                                     className="text-white text-sm font-medium"
                                                 >
                                                     删除
                                                 </button>
                                             </div>
-                                        )}
-                                        
-                                        {/* 可滑动的内容层 */}
-                                        <div
-                                            className="relative bg-neutral-100 dark:bg-neutral-800 transition-transform duration-200 ease-out"
-                                            style={{
-                                                transform: swipedGrinderId === grinder.id ? `translateX(-${touchOffset}px)` : 'translateX(0)'
-                                            }}
-                                            onTouchStart={(e) => {
-                                                e.stopPropagation();
-                                                handleTouchStart(e, grinder.id);
-                                            }}
-                                            onTouchMove={(e) => {
-                                                e.stopPropagation();
-                                                handleTouchMove(e, grinder.id);
-                                            }}
-                                            onTouchEnd={(e) => {
-                                                e.stopPropagation();
-                                                handleTouchEnd();
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
+                                            
+                                            {/* 可滑动的内容层 */}
+                                            <div
+                                                className="relative bg-neutral-100 dark:bg-neutral-800 transition-transform duration-200 ease-out"
+                                                style={{
+                                                    transform: swipedGrinderId === grinder.id ? `translateX(-${touchOffset}px)` : 'translateX(0)'
+                                                }}
+                                                onTouchStart={(e) => {
+                                                    e.stopPropagation();
+                                                    handleTouchStart(e, grinder.id);
+                                                }}
+                                                onTouchMove={(e) => {
+                                                    e.stopPropagation();
+                                                    handleTouchMove(e, grinder.id);
+                                                }}
+                                                onTouchEnd={(e) => {
+                                                    e.stopPropagation();
+                                                    handleTouchEnd();
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
                                             <div className="flex items-center justify-between p-3">
                                                 <div className="flex-1">
                                                     <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
@@ -792,7 +731,9 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                             {grinder.id !== 'generic' && renderGrinderReferenceInline(grinder.id)}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                    });
+                                })()}
                             </div>
                         </div>
                     )}
