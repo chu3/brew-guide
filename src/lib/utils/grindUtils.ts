@@ -380,19 +380,20 @@ export function smartConvertGrindSize(
 		return currentValue;
 	}
 
-	// 检查当前研磨度值是否是旧磨豆机的预设值
-	const isOldPreset = isPresetGrindSize(currentValue, fromGrinderId, customGrinders);
-	
-	// 常见研磨度描述（从通用磨豆机切换时也应视为"预设值"）
+	// 常见研磨度描述（这些描述词应该总是被转换）
 	const commonGrindDescriptions = ['极细', '特细', '细', '中细', '中细偏粗', '中粗', '粗', '特粗', '意式', '摩卡壶', '手冲', '法压壶', '冷萃'];
 	const isCommonDescription = commonGrindDescriptions.includes(currentValue);
 	
-	// 如果是预设值，或者从通用磨豆机切换且是常见描述，都进行智能转换
-	if (isOldPreset || (fromGrinderId === 'generic' && isCommonDescription)) {
+	// 检查当前研磨度值是否是旧磨豆机的预设值
+	const isOldPreset = isPresetGrindSize(currentValue, fromGrinderId, customGrinders);
+	
+	// 如果是常见描述词，无论从哪个磨豆机切换，都应该转换
+	// 如果是预设值（特定磨豆机的刻度），也应该转换
+	if (isCommonDescription || isOldPreset) {
 		// 1. 先将旧磨豆机的刻度反向转换为通用描述（如"8格" -> "中细"）
 		const genericDescription = reverseConvertGrindSize(currentValue, fromGrinderId, customGrinders);
 		
-		// 2. 再将通用描述转换为新磨豆机的刻度（如"中细" -> "9格"）
+		// 2. 再将通用描述转换为新磨豆机的刻度（如"中细" -> "15-25格"）
 		return convertToSpecificGrind(genericDescription, toGrinderId, customGrinders);
 	}
 	

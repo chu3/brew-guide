@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
-import { formatGrindSize } from '@/lib/utils/grindUtils'
+import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize } from '@/lib/utils/grindUtils'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
 import { listenToEvent } from '@/lib/brewing/events'
 import { updateParameterInfo, getEquipmentName } from '@/lib/brewing/parameters'
@@ -137,6 +137,263 @@ const EditableParameter: React.FC<EditableParameterProps> = ({
                     {unit && <span className="ml-0.5 shrink-0">{unit}</span>}
                 </span>
             )}
+        </span>
+    )
+}
+
+// 磨豆机研磨度编辑组件
+interface EditableGrindSizeProps {
+    grindSize: string
+    onGrindSizeChange: (value: string) => void
+    settings: SettingsOptions
+    className?: string
+    disabled?: boolean
+}
+
+const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
+    grindSize, onGrindSizeChange, settings, className = '', disabled = false
+}) => {
+    const [isEditing, setIsEditing] = useState(false)
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+    const inputRef = React.useRef<HTMLInputElement>(null)
+    const dropdownRef = React.useRef<HTMLDivElement>(null)
+    const triggerRef = React.useRef<HTMLSpanElement>(null)
+    const measureRef = React.useRef<HTMLSpanElement>(null)
+    const inputMeasureRef = React.useRef<HTMLSpanElement>(null)
+    
+    // 解析研磨度，提取磨豆机ID和值
+    const { grinderId: currentGrinderId, value: currentGrindValue } = parseGrindSize(grindSize)
+    
+    // 实际使用的磨豆机ID（优先使用研磨度中的ID，否则使用全局设置）
+    const actualGrinderId = currentGrinderId || settings.grindType || 'generic'
+    
+    // 获取用户的磨豆机列表
+    const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders)
+    
+    // 获取当前磨豆机名称
+    const currentGrinderName = myGrinders.find(g => g.id === actualGrinderId)?.name || '通用'
+    
+    // 显示的研磨度值（为空时显示占位符）
+    const displayValue = formatGrindSize(grindSize, settings.grindType, settings.customGrinders) || '未设置'
+    
+    const [tempValue, setTempValue] = useState(currentGrindValue || '0')
+    const [selectWidth, setSelectWidth] = useState<number | undefined>(undefined)
+    const [inputWidth, setInputWidth] = useState<number | undefined>(undefined)
+    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null)
+    
+    // 测量当前文本宽度并设置 select 宽度
+    useEffect(() => {
+        if (measureRef.current) {
+            const width = measureRef.current.offsetWidth
+            setSelectWidth(width)
+        }
+    }, [currentGrinderName])
+    
+    // 测量输入框文本宽度
+    useEffect(() => {
+        if (inputMeasureRef.current) {
+            // 使用实际值或占位符来测量宽度
+            const width = inputMeasureRef.current.offsetWidth
+            setInputWidth(Math.max(width, 20)) // 最小宽度改为20px，确保即使为空也能显示
+        }
+    }, [tempValue])
+
+    useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.select()
+        }
+    }, [isEditing])
+
+    useEffect(() => {
+        setTempValue(currentGrindValue || '0')
+    }, [currentGrindValue])
+
+    const handleSubmit = useCallback(() => {
+        setIsEditing(false)
+        // 即使值为空，也要保留磨豆机信息，使用 "0" 作为默认值
+        const valueToUse = tempValue.trim() || '0'
+        const newGrindSize = combineGrindSize(actualGrinderId, valueToUse)
+        if (newGrindSize !== grindSize) {
+            onGrindSizeChange(newGrindSize)
+        }
+    }, [tempValue, grindSize, actualGrinderId, onGrindSizeChange])
+
+    const handleCancel = useCallback(() => {
+        setTempValue(currentGrindValue || '0')
+        setIsEditing(false)
+    }, [currentGrindValue])
+
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') handleSubmit()
+        else if (e.key === 'Escape') handleCancel()
+    }, [handleSubmit, handleCancel])
+
+    // 处理磨豆机切换
+    const handleGrinderChange = (newGrinderId: string) => {
+        const newGrindSizeValue = smartConvertGrindSize(
+            currentGrindValue,
+            actualGrinderId,
+            newGrinderId,
+            settings.customGrinders
+        )
+        const newGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
+        onGrindSizeChange(newGrindSize)
+        setIsDropdownOpen(false)
+    }
+    
+    // 计算下拉菜单位置
+    const updateDropdownPosition = useCallback(() => {
+        if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect()
+            setDropdownPosition({
+                top: rect.bottom + 4,
+                left: rect.left
+            })
+        }
+    }, [])
+    
+    // 打开下拉菜单时计算位置
+    useEffect(() => {
+        if (isDropdownOpen) {
+            updateDropdownPosition()
+            window.addEventListener('scroll', updateDropdownPosition, true)
+            window.addEventListener('resize', updateDropdownPosition)
+            return () => {
+                window.removeEventListener('scroll', updateDropdownPosition, true)
+                window.removeEventListener('resize', updateDropdownPosition)
+            }
+        }
+    }, [isDropdownOpen, updateDropdownPosition])
+    
+    // 点击外部关闭下拉菜单
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (isDropdownOpen && 
+                dropdownRef.current && 
+                !dropdownRef.current.contains(e.target as Node) &&
+                triggerRef.current &&
+                !triggerRef.current.contains(e.target as Node)) {
+                setIsDropdownOpen(false)
+            }
+        }
+        
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [isDropdownOpen])
+
+    if (disabled) {
+        return (
+            <span className={`inline-flex items-center ${className}`}>
+                <span className="whitespace-nowrap">{displayValue}</span>
+            </span>
+        )
+    }
+
+    return (
+        <span className={`inline-flex items-center gap-1 ${className}`}>
+            {/* 隐藏的测量元素 - 用于测量磨豆机名称宽度 */}
+            <span 
+                ref={measureRef}
+                className="absolute invisible text-xs whitespace-nowrap"
+                style={{ pointerEvents: 'none' }}
+            >
+                {currentGrinderName}
+            </span>
+            
+            {/* 隐藏的测量元素 - 用于测量输入值宽度 */}
+            <span 
+                ref={inputMeasureRef}
+                className="absolute invisible text-xs whitespace-nowrap"
+                style={{ pointerEvents: 'none' }}
+            >
+                {tempValue || '0'}
+            </span>
+            
+            {/* 自定义磨豆机选择器 */}
+            <span className="relative inline-flex items-center">
+                <span
+                    ref={triggerRef}
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className={`bg-transparent border-0 border-b border-dashed text-xs cursor-pointer outline-none pb-0.5 transition-colors duration-150 whitespace-nowrap overflow-hidden mr-1 ${
+                        isDropdownOpen 
+                            ? 'border-neutral-600 dark:border-neutral-400 text-neutral-800 dark:text-neutral-200'
+                            : 'border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 hover:border-neutral-500 dark:hover:border-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+                    }`}
+                    style={{ 
+                        width: selectWidth ? `${selectWidth}px` : 'auto',
+                    }}
+                >
+                    {currentGrinderName}
+                </span>
+            </span>
+            
+            {/* 下拉菜单 - 极简风格设计 */}
+            <AnimatePresence>
+                {isDropdownOpen && dropdownPosition && (
+                    <motion.div
+                        ref={dropdownRef}
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ 
+                            duration: 0.2,
+                            ease: [0.25, 0.46, 0.45, 0.94]
+                        }}
+                        className="fixed bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-md shadow-sm z-[9999] min-w-[80px] max-h-[200px] overflow-hidden"
+                        style={{
+                            top: `${dropdownPosition.top}px`,
+                            left: `${dropdownPosition.left}px`,
+                        }}
+                    >
+                        <div className="overflow-y-auto max-h-[200px] scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
+                            {myGrinders.map((grinder) => (
+                                <div
+                                    key={grinder.id}
+                                    onClick={() => handleGrinderChange(grinder.id)}
+                                    className={`px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100 ${
+                                        grinder.id === actualGrinderId
+                                            ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
+                                            : 'text-neutral-600 dark:text-neutral-400 '
+                                    }`}
+                                >
+                                    {grinder.name}
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            
+            {/* 分隔符 */}
+            {/* <span className="shrink-0">·</span> */}
+            
+            {/* 研磨度值输入 */}
+            <span
+                className="group relative inline-flex items-center cursor-pointer min-w-0 border-b border-dashed border-neutral-300 dark:border-neutral-600 pb-0.5 overflow-hidden transition-all duration-200"
+                onClick={() => setIsEditing(true)}
+                style={{
+                    width: inputWidth ? `${inputWidth}px` : 'auto',
+                    minWidth: '20px', // 最小宽度确保始终可见
+                }}
+            >
+                {isEditing ? (
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={handleSubmit}
+                        onKeyDown={handleKeyDown}
+                        placeholder="0"
+                        className="bg-transparent text-xs outline-hidden whitespace-nowrap overflow-hidden w-full placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                    />
+                ) : (
+                    <span className={`whitespace-nowrap text-xs overflow-hidden ${!currentGrindValue ? 'text-neutral-400 dark:text-neutral-600' : ''}`}>
+                        {currentGrindValue || '0'}
+                    </span>
+                )}
+            </span>
         </span>
     )
 }
@@ -702,10 +959,10 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                 {parameterInfo.params?.grindSize && (
                                                                     <>
                                                                         <span className="shrink-0">·</span>
-                                                                        <EditableParameter
-                                                                            value={formatGrindSize(displayOverlay?.grindSize || editableParams.grindSize, settings.grindType, settings.customGrinders)}
-                                                                            onChange={(v) => handleParamChange('grindSize', v)}
-                                                                            unit=""
+                                                                        <EditableGrindSize
+                                                                            grindSize={displayOverlay?.grindSize || editableParams.grindSize}
+                                                                            onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
+                                                                            settings={settings}
                                                                         />
                                                                     </>
                                                                 )}
