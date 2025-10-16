@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { hasSpecificGrindScale, getGrindScaleUnit, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize } from '@/lib/utils/grindUtils';
+import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation';
 import { Grinder, availableGrinders, CustomEquipment } from '@/lib/core/config';
 import { SettingsOptions } from '@/components/settings/Settings';
 import { isEspressoMachine } from '@/lib/utils/equipmentUtils';
@@ -61,8 +62,15 @@ const ParamsStep: React.FC<ParamsStepProps> = ({
   // 解析当前研磨度值,提取磨豆机ID和刻度值
   const { grinderId: currentGrinderId, value: currentGrindValue } = parseGrindSize(params.grindSize);
   
-  // 实际使用的磨豆机ID（优先使用研磨度中的ID，否则使用全局设置）
-  const actualGrinderId = currentGrinderId || settings.grindType || 'generic';
+  // 使用智能推荐获取实际磨豆机ID
+  // 如果研磨度中已携带磨豆机ID，使用它；否则根据器具类型智能推荐
+  const recommendedGrinderId = getRecommendedGrinder(
+    customEquipment?.id || null,
+    settings.myGrinders || ['generic'],
+    settings.lastUsedGrinderByEquipment,
+    customEquipment ? [customEquipment] : undefined
+  );
+  const actualGrinderId = currentGrinderId || recommendedGrinderId;
   
   // 查找选定的研磨机
   const selectedGrinder = availableGrinders.find((g: Grinder) => g.id === actualGrinderId);
@@ -70,6 +78,43 @@ const ParamsStep: React.FC<ParamsStepProps> = ({
 
   // 获取用户的磨豆机列表
   const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders);
+
+  // 使用 ref 追踪是否已经为当前器具推荐过，避免循环更新
+  const lastRecommendedEquipment = useRef<string | null>(null);
+  
+  // 当器具变化或推荐的磨豆机改变时，自动转化研磨度
+  useEffect(() => {
+    const equipmentKey = customEquipment?.id || 'none';
+    
+    // 如果已经为这个器具推荐过，跳过
+    if (lastRecommendedEquipment.current === equipmentKey) return;
+    
+    // 如果研磨度没有携带磨豆机ID，或者携带的是通用磨豆机
+    if (!currentGrinderId || currentGrinderId === 'generic') {
+      // 且推荐的磨豆机不是通用的
+      if (recommendedGrinderId !== 'generic' && currentGrindValue) {
+        // 转化研磨度
+        const convertedValue = smartConvertGrindSize(
+          currentGrindValue,
+          currentGrinderId || 'generic',
+          recommendedGrinderId,
+          settings.customGrinders
+        );
+        const newGrindSize = combineGrindSize(recommendedGrinderId, convertedValue);
+        
+        // 只有当转化后的值不同时才更新
+        if (newGrindSize !== params.grindSize) {
+          onGrindSizeChange(newGrindSize);
+        }
+        
+        // 标记已经为这个器具推荐过
+        lastRecommendedEquipment.current = equipmentKey;
+      }
+    } else {
+      // 如果研磨度已经有磨豆机ID，也标记为已推荐
+      lastRecommendedEquipment.current = equipmentKey;
+    }
+  }, [customEquipment?.id, recommendedGrinderId, currentGrinderId, currentGrindValue, params.grindSize, settings.customGrinders, onGrindSizeChange]);
 
   // 研磨度参考提示渲染函数
   const renderGrindSizeHints = () => {
@@ -115,7 +160,7 @@ const ParamsStep: React.FC<ParamsStepProps> = ({
   };
 
   // 处理磨豆机切换
-  const handleGrinderChange = (newGrinderId: string) => {
+  const handleGrinderChange = async (newGrinderId: string) => {
     // 使用智能转换函数
     const newGrindSizeValue = smartConvertGrindSize(
       currentGrindValue,
@@ -129,6 +174,13 @@ const ParamsStep: React.FC<ParamsStepProps> = ({
     
     // 通知父组件
     onGrindSizeChange(newGrindSize);
+    
+    // 记录用户的磨豆机选择（用于智能推荐）
+    await saveLastUsedGrinder(
+      customEquipment?.id || null,
+      newGrinderId,
+      customEquipment ? [customEquipment] : undefined
+    );
     
     // 如果提供了 onGrinderChange 回调，也调用它
     if (onGrinderChange) {

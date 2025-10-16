@@ -5,7 +5,9 @@ import {
 	CustomEquipment,
 } from "@/lib/core/config";
 import { Content } from "./useBrewingState";
-import { formatGrindSize } from "@/lib/utils/grindUtils";
+import { formatGrindSize, parseGrindSize, smartConvertGrindSize, findGrinder } from "@/lib/utils/grindUtils";
+import { getRecommendedGrinder } from "@/lib/utils/grinderRecommendation";
+import { useGrinderRecommendationStore } from "@/lib/stores/grinderRecommendationStore";
 import { SettingsOptions } from "@/components/settings/Settings";
 import { loadCustomMethodsForEquipment } from "@/lib/managers/customMethods";
 import { Stage } from '@/components/method/forms/components/types';
@@ -32,6 +34,51 @@ export const formatTime = (seconds: number, compact: boolean = false) => {
 	return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
+// 获取方案显示的研磨度（使用智能推荐的磨豆机）
+const getDisplayGrindSize = (
+	method: Method,
+	settings: SettingsOptions,
+	selectedEquipment: string | null,
+	customEquipments: CustomEquipment[],
+	lastUsedGrinderByEquipment: Record<string, string>
+): string => {
+	// 解析方案的研磨度
+	const { grinderId, value } = parseGrindSize(method.params.grindSize);
+	
+	// 如果方案已经携带了磨豆机ID（且不是 generic），直接使用方案的磨豆机，不进行转换
+	// 这样可以避免在器具删除后对自定义方案进行错误的转换
+	if (grinderId && grinderId !== 'generic') {
+		return formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders, { showGrinderName: true });
+	}
+	
+	// 对于没有携带磨豆机ID的方案（通用方案），获取智能推荐的磨豆机
+	const recommendedGrinderId = getRecommendedGrinder(
+		selectedEquipment || null,
+		settings.myGrinders || ['generic'],
+		lastUsedGrinderByEquipment, // 使用来自参数的值
+		customEquipments
+	);
+	
+	// 如果推荐的是通用磨豆机，直接返回原值
+	if (recommendedGrinderId === 'generic') {
+		return value;
+	}
+	
+	// 转换为推荐磨豆机的刻度（从通用描述转换到推荐的磨豆机）
+	const convertedValue = smartConvertGrindSize(
+		value,
+		'generic', // 从通用描述转换
+		recommendedGrinderId, // 转换到推荐的磨豆机
+		settings.customGrinders
+	);
+	
+	// 获取磨豆机名称
+	const grinder = findGrinder(recommendedGrinderId, settings.customGrinders, true);
+	const grinderName = grinder?.name || '通用';
+	
+	return `${grinderName} ${convertedValue}`;
+};
+
 export interface UseBrewingContentProps {
 	selectedEquipment: string | null;
 	methodType: "common" | "custom";
@@ -49,6 +96,11 @@ export function useBrewingContent({
 	settings,
 	customEquipments = [], // 设置默认值为空数组
 }: UseBrewingContentProps) {
+	// 订阅 Zustand store 中的磨豆机推荐状态
+	const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
+		state => state.lastUsedGrinderByEquipment
+	);
+	
 	const initialContent: Content = {
 		咖啡豆: {
 			steps: [
@@ -230,7 +282,7 @@ export function useBrewingContent({
 					items = [
 						`水粉比 ${method.params.ratio}`,
 						`总时长 ${formatTime(totalTime, true)}`,
-						`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders)}`,
+						`研磨度 ${getDisplayGrindSize(method, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment)}`,
 					];
 					}
 
@@ -277,7 +329,7 @@ export function useBrewingContent({
 					items = [
 						`水粉比 ${method.params.ratio}`,
 						`总时长 ${formatTime(totalTime, true)}`,
-						`研磨度 ${formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders)}`,
+						`研磨度 ${getDisplayGrindSize(method, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment)}`,
 					];
 					}
 
@@ -322,10 +374,10 @@ export function useBrewingContent({
 	}, [
 		selectedEquipment,
 		methodType,
-		settings.grindType,
-		settings.customGrinders,
+		settings,
 		customEquipments,
 		currentEquipmentCustomMethods, // 添加依赖，确保currentEquipmentCustomMethods变化时更新content
+		lastUsedGrinderByEquipment, // 添加 Zustand store 依赖，磨豆机推荐变化时自动更新
 	]);
 
 	// 更新注水步骤内容

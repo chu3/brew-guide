@@ -433,6 +433,7 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
               onMethodSelect={setSelectedMethod}
               onParamsChange={_handleMethodParamsChange}
               settings={settings}
+              customEquipments={customEquipments}
             />
           )}
         </div>

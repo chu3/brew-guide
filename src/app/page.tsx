@@ -81,11 +81,16 @@ const AppLoader = ({ onInitialized }: { onInitialized: (params: { hasBeans: bool
                 // 动态导入所有需要的模块
                 const [
                     { Storage },
-                    { CoffeeBeanManager }
+                    { CoffeeBeanManager },
+                    { useGrinderRecommendationStore }
                 ] = await Promise.all([
                     import('@/lib/core/storage'),
-                    import('@/lib/managers/coffeeBeanManager')
+                    import('@/lib/managers/coffeeBeanManager'),
+                    import('@/lib/stores/grinderRecommendationStore')
                 ]);
+
+                // 初始化磨豆机推荐 store
+                await useGrinderRecommendationStore.getState().loadFromStorage();
 
                 // 检查咖啡豆状态
                 const beans = await CoffeeBeanManager.getAllBeans();

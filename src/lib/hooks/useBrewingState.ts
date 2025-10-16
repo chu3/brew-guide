@@ -12,6 +12,8 @@ import { updateParameterInfo } from "../brewing/parameters";
 import { getStringState, saveStringState } from "@/lib/core/statePersistence";
 import { getMainTabPreference, saveMainTabPreference } from "@/lib/navigation/navigationCache";
 import { getEquipmentIdByName } from "@/lib/utils/equipmentUtils";
+import { parseGrindSize } from "@/lib/utils/grindUtils";
+import { saveLastUsedGrinder } from "@/lib/utils/grinderRecommendation";
 
 // 器具选择缓存
 const MODULE_NAME = 'brewing-equipment';
@@ -371,6 +373,16 @@ export function useBrewingState(initialBrewingStep?: BrewingStep) {
 				const savedMethod = methods[selectedEquipment]?.find(m => m.name === cleanMethod.name);
 				setSelectedMethod(savedMethod || cleanMethod);
 				
+				// 记录用户使用的磨豆机（用于智能推荐）
+				const { grinderId } = parseGrindSize(cleanMethod.params.grindSize);
+				if (grinderId && grinderId !== 'generic') {
+					await saveLastUsedGrinder(
+						selectedEquipment,
+						grinderId,
+						customEquipments
+					);
+				}
+				
 				// 不再在这里自动关闭表单，让模态框通过历史栈管理自己控制
 				// setShowCustomForm(false);
 				// setEditingMethod(undefined);
@@ -385,7 +397,7 @@ export function useBrewingState(initialBrewingStep?: BrewingStep) {
 				alert("保存方案失败，请重试");
 			}
 		},
-		[selectedEquipment, customMethods, editingMethod]
+		[selectedEquipment, customMethods, editingMethod, customEquipments]
 	);
 
 	// 编辑自定义方案

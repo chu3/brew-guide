@@ -52,6 +52,7 @@ export interface SettingsOptions {
     showStatusDots: boolean // 是否显示状态点
     customGrinders?: CustomGrinder[] // 添加自定义磨豆机列表
     myGrinders?: string[] // 我的磨豆机列表（存储磨豆机ID，包括内置和自定义）
+    lastUsedGrinderByEquipment?: Record<string, string> // 记录不同器具类型最后使用的磨豆机（器具类型 -> 磨豆机ID）
 
     safeAreaMargins?: {
         top: number // 顶部边距
@@ -134,6 +135,7 @@ export const defaultSettings: SettingsOptions = {
     showStatusDots: true, // 默认显示状态点
     customGrinders: [], // 默认无自定义磨豆机
     myGrinders: ['generic'], // 默认包含"通用"磨豆机
+    lastUsedGrinderByEquipment: {}, // 默认为空对象，将根据使用自动填充
 
     safeAreaMargins: {
         top: 38, // 默认顶部边距 42px

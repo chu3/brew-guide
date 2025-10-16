@@ -12,6 +12,8 @@ import { equipmentList, commonMethods, type Method, type CustomEquipment } from 
 import { loadCustomEquipments } from '@/lib/managers/customEquipments'
 import { loadCustomMethods } from '@/lib/managers/customMethods'
 import { parseGrindSize, combineGrindSize, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
+import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation'
+import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { getEquipmentNameById, getEquipmentIdByName } from '@/lib/utils/equipmentUtils'
 import { SettingsOptions } from '@/components/settings/Settings'
 import { CustomFlavorDimensionsManager, FlavorDimension } from '@/lib/managers/customFlavorDimensions'
@@ -164,6 +166,10 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
     onTimestampChange,
     settings,
 }) => {
+    // 订阅 Zustand store 中的磨豆机推荐状态
+    const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
+        state => state.lastUsedGrinderByEquipment
+    );
 
     // 风味维度数据
     const [flavorDimensions, setFlavorDimensions] = useState<FlavorDimension[]>([])
@@ -389,6 +395,55 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
 
         loadEquipmentsAndMethods();
     }, [initialData.equipment]);
+
+    // 智能推荐磨豆机：当选择器具且研磨度未携带磨豆机ID时，使用智能推荐
+    // 使用 ref 追踪是否已经为当前器具推荐过，避免循环更新
+    const lastRecommendedEquipment = useRef<string | null>(null);
+    
+    useEffect(() => {
+        if (!settings || !selectedEquipment) return;
+        
+        // 如果已经为这个器具推荐过，跳过
+        if (lastRecommendedEquipment.current === selectedEquipment) return;
+        
+        const { grinderId } = parseGrindSize(methodParams.grindSize);
+        
+        // 只在新建笔记或研磨度未携带磨豆机ID时使用推荐
+        // 如果研磨度已携带磨豆机ID，保留它（即使磨豆机不可用，也让用户看到并手动切换）
+        if (!grinderId || grinderId === 'generic') {
+            const customEquips = availableEquipments.filter(eq => 'isCustom' in eq && eq.isCustom) as CustomEquipment[];
+            const recommendedGrinderId = getRecommendedGrinder(
+                selectedEquipment,
+                settings.myGrinders || ['generic'],
+                lastUsedGrinderByEquipment,
+                customEquips
+            );
+            
+            // 如果推荐的磨豆机与当前不同，更新研磨度
+            if (recommendedGrinderId !== grinderId) {
+                const { value } = parseGrindSize(methodParams.grindSize);
+                
+                // 使用智能转化：将当前研磨度转换为推荐磨豆机的刻度
+                const convertedValue = smartConvertGrindSize(
+                    value || '中细',
+                    grinderId || 'generic', // 从当前磨豆机（或通用）转换
+                    recommendedGrinderId, // 转换到推荐的磨豆机
+                    settings.customGrinders
+                );
+                
+                setMethodParams(prev => ({
+                    ...prev,
+                    grindSize: combineGrindSize(recommendedGrinderId, convertedValue)
+                }));
+                // 标记已经为这个器具推荐过
+                lastRecommendedEquipment.current = selectedEquipment;
+            }
+        } else {
+            // 如果研磨度已经有磨豆机ID（即使不可用），保留它，让用户手动切换
+            // 只标记为已推荐，不做自动转换
+            lastRecommendedEquipment.current = selectedEquipment;
+        }
+    }, [selectedEquipment, settings, availableEquipments, methodParams.grindSize, lastUsedGrinderByEquipment]);
 
     // 事件监听
     useEffect(() => {
@@ -1146,7 +1201,7 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                 <div className="min-w-0">
                                     <Select
                                         value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}
-                                        onValueChange={(newGrinderId) => {
+                                        onValueChange={async (newGrinderId) => {
                                             const { grinderId: oldGrinderId, value: currentValue } = parseGrindSize(methodParams.grindSize);
                                             const oldGrinder = oldGrinderId || 'generic';
                                             
@@ -1162,6 +1217,14 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                                 ...methodParams,
                                                 grindSize: combineGrindSize(newGrinderId, newGrindSizeValue)
                                             });
+                                            
+                                            // 记录用户的磨豆机选择（用于智能推荐）
+                                            const customEquips = availableEquipments.filter(eq => 'isCustom' in eq && eq.isCustom) as CustomEquipment[];
+                                            await saveLastUsedGrinder(
+                                                selectedEquipment,
+                                                newGrinderId,
+                                                customEquips
+                                            );
                                         }}
                                     >
                                         <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs">

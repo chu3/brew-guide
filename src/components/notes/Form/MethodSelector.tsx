@@ -1,8 +1,10 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Method } from '@/lib/core/config'
+import { Method, CustomEquipment } from '@/lib/core/config'
 import { formatGrindSize, hasSpecificGrindScale, getGrindScaleUnit, parseGrindSize, combineGrindSize, findGrinder, getMyGrinders, smartConvertGrindSize } from '@/lib/utils/grindUtils'
+import { getRecommendedGrinder, saveLastUsedGrinder } from '@/lib/utils/grinderRecommendation'
+import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { SettingsOptions } from '@/components/settings/Settings'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/coffee-bean/ui/select'
 
@@ -14,6 +16,7 @@ interface MethodSelectorProps {
   onMethodSelect: (methodId: string) => void
   onParamsChange: (method: Method) => void
   settings?: SettingsOptions // 添加可选的设置参数
+  customEquipments?: CustomEquipment[] // 添加自定义器具列表
 }
 
 const MethodSelector: React.FC<MethodSelectorProps> = ({
@@ -24,18 +27,31 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   onMethodSelect,
   onParamsChange,
   settings,
+  customEquipments,
 }) => {
+  // 订阅 Zustand store 中的磨豆机推荐状态
+  const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
+    state => state.lastUsedGrinderByEquipment
+  );
+  
   // 本地状态管理参数
   const [coffeeAmount, setCoffeeAmount] = useState<string>('15')
   const [ratioAmount, setRatioAmount] = useState<string>('15')
   const [waterAmount, setWaterAmount] = useState<string>('225g')
   const [grindSize, setGrindSize] = useState<string>('中细')
-  // 使用用户磨豆机列表中的第一个作为默认磨豆机
-  const [selectedGrinderId, setSelectedGrinderId] = useState<string>(
-    (settings?.myGrinders && settings.myGrinders.length > 0) 
-      ? settings.myGrinders[0] 
-      : 'generic'
-  )
+  
+  // 使用智能推荐获取默认磨豆机（使用最新的 Zustand 状态）
+  const getInitialGrinderId = () => {
+    if (!settings) return 'generic'
+    return getRecommendedGrinder(
+      selectedEquipment || null,
+      settings.myGrinders || ['generic'],
+      lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+      customEquipments
+    )
+  }
+  
+  const [selectedGrinderId, setSelectedGrinderId] = useState<string>(getInitialGrinderId())
   const [_tempValue, setTempValue] = useState<string>('92')
 
   // 处理咖啡粉量变化
@@ -138,7 +154,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   }
 
   // 处理磨豆机切换
-  const handleGrinderChange = (newGrinderId: string, method: Method) => {
+  const handleGrinderChange = async (newGrinderId: string, method: Method) => {
     const oldGrinderId = selectedGrinderId
     setSelectedGrinderId(newGrinderId)
 
@@ -156,6 +172,13 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
     // 组合新的磨豆机ID和研磨度值
     const combinedGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
     method.params.grindSize = combinedGrindSize
+    
+    // 记录用户的磨豆机选择（用于智能推荐）
+    await saveLastUsedGrinder(
+      selectedEquipment || null,
+      newGrinderId,
+      customEquipments
+    )
 
     // 通知父组件参数已更改
     onParamsChange(method)
@@ -164,13 +187,31 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   // 处理水温变化
   // 未使用的水温变更处理函数，可以在将来实现
 
-  // 当用户在设置中更改磨豆机列表时，同步更新本地状态
+  // 当用户在设置中更改磨豆机列表或选择器具时,更新默认磨豆机（使用智能推荐）
   useEffect(() => {
-    // 只在没有选择方法时（新建笔记）更新默认磨豆机
-    if (!selectedMethod && settings?.myGrinders && settings.myGrinders.length > 0) {
-      setSelectedGrinderId(settings.myGrinders[0])
+    // 只在没有选择方法时（新建笔记）或器具变化时更新默认磨豆机
+    if (!selectedMethod && settings) {
+      const oldGrinderId = selectedGrinderId
+      const recommendedGrinderId = getRecommendedGrinder(
+        selectedEquipment || null,
+        settings.myGrinders || ['generic'],
+        lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+        customEquipments
+      )
+      
+      // 如果推荐的磨豆机与当前不同，需要转化研磨度
+      if (recommendedGrinderId !== oldGrinderId) {
+        const newGrindSizeValue = smartConvertGrindSize(
+          grindSize,
+          oldGrinderId,
+          recommendedGrinderId,
+          settings.customGrinders
+        )
+        setGrindSize(newGrindSizeValue)
+        setSelectedGrinderId(recommendedGrinderId)
+      }
     }
-  }, [settings?.myGrinders, selectedMethod])
+  }, [settings, selectedMethod, selectedEquipment, customEquipments, selectedGrinderId, grindSize, lastUsedGrinderByEquipment])
 
   // 当选择的方法变化时，初始化参数
   useEffect(() => {
@@ -192,20 +233,36 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         // 解析研磨度，提取磨豆机ID和值
         const { grinderId, value } = parseGrindSize(method.params.grindSize)
         
-        // 设置磨豆机（如果没有磨豆机信息，使用用户磨豆机列表中的第一个）
-        const defaultGrinderId = (settings?.myGrinders && settings.myGrinders.length > 0) 
-          ? settings.myGrinders[0] 
-          : 'generic'
-        const actualGrinderId = grinderId || defaultGrinderId
+        // 使用智能推荐获取默认磨豆机（如果研磨度没有携带磨豆机ID）
+        const recommendedGrinderId = settings ? getRecommendedGrinder(
+          selectedEquipment || null,
+          settings.myGrinders || ['generic'],
+          lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+          customEquipments
+        ) : 'generic'
+        
+        const actualGrinderId = grinderId || recommendedGrinderId
         setSelectedGrinderId(actualGrinderId)
         
-        // 设置研磨度值（仅值部分，不包含磨豆机ID）
-        setGrindSize(value)
+        // 如果使用了推荐的磨豆机（即方案本身没有携带磨豆机ID），需要转化研磨度
+        let finalGrindSize = value
+        if (!grinderId && actualGrinderId !== 'generic') {
+          // 将通用研磨度描述转换为推荐磨豆机的刻度
+          finalGrindSize = smartConvertGrindSize(
+            value,
+            'generic', // 从通用描述转换
+            actualGrinderId, // 转换到推荐的磨豆机
+            settings?.customGrinders
+          )
+        }
+        
+        // 设置研磨度值
+        setGrindSize(finalGrindSize)
         
         setTempValue(temp)
       }
     }
-  }, [selectedMethod, customMethods, commonMethods, settings])
+  }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
 
   // 辅助函数：提取数字部分
   function extractNumber(str: string): string {
@@ -222,6 +279,46 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   // 判断方法是否选中
   const isMethodSelected = (method: Method) => {
     return selectedMethod === method.id || selectedMethod === method.name;
+  }
+
+  // 获取方案显示的研磨度（使用智能推荐的磨豆机）
+  const getDisplayGrindSize = (method: Method): string => {
+    if (!settings) return method.params.grindSize;
+    
+    // 解析方案的研磨度
+    const { grinderId, value } = parseGrindSize(method.params.grindSize);
+    
+    // 如果方案已经携带了磨豆机ID，直接使用
+    if (grinderId && grinderId !== 'generic') {
+      return formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders, { showGrinderName: true });
+    }
+    
+    // 否则，使用智能推荐的磨豆机（使用最新的 Zustand 状态）
+    const recommendedGrinderId = getRecommendedGrinder(
+      selectedEquipment || null,
+      settings.myGrinders || ['generic'],
+      lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+      customEquipments
+    );
+    
+    // 如果推荐的是通用磨豆机，直接返回原值
+    if (recommendedGrinderId === 'generic') {
+      return value;
+    }
+    
+    // 转换为推荐磨豆机的刻度
+    const convertedValue = smartConvertGrindSize(
+      value,
+      'generic',
+      recommendedGrinderId,
+      settings.customGrinders
+    );
+    
+    // 获取磨豆机名称
+    const grinder = findGrinder(recommendedGrinderId, settings.customGrinders, true);
+    const grinderName = grinder?.name || '通用';
+    
+    return `${grinderName} ${convertedValue}`;
   }
 
   // 创建分隔符
@@ -278,7 +375,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
               <div className="flex items-center">
                 <span className="text-xs font-medium w-14">研磨度:</span>
                 <span className="text-xs font-medium">
-                  {settings ? formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders, { showGrinderName: true }) : method.params.grindSize}
+                  {getDisplayGrindSize(method)}
                 </span>
               </div>
             </div>

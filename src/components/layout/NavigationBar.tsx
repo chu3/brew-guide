@@ -5,7 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
-import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize } from '@/lib/utils/grindUtils'
+import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder } from '@/lib/utils/grindUtils'
+import { saveLastUsedGrinder, getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
+import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
 import { listenToEvent } from '@/lib/brewing/events'
 import { updateParameterInfo, getEquipmentName } from '@/lib/brewing/parameters'
@@ -148,11 +150,18 @@ interface EditableGrindSizeProps {
     settings: SettingsOptions
     className?: string
     disabled?: boolean
+    selectedEquipment?: string | null
+    customEquipments?: CustomEquipment[]
 }
 
 const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
-    grindSize, onGrindSizeChange, settings, className = '', disabled = false
+    grindSize, onGrindSizeChange, settings, className = '', disabled = false, selectedEquipment, customEquipments
 }) => {
+    // 订阅 Zustand store 中的磨豆机推荐状态
+    const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
+        state => state.lastUsedGrinderByEquipment
+    );
+    
     const [isEditing, setIsEditing] = useState(false)
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
     const inputRef = React.useRef<HTMLInputElement>(null)
@@ -164,14 +173,22 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     // 解析研磨度，提取磨豆机ID和值
     const { grinderId: currentGrinderId, value: currentGrindValue } = parseGrindSize(grindSize)
     
-    // 实际使用的磨豆机ID（优先使用研磨度中的ID，否则使用全局设置）
-    const actualGrinderId = currentGrinderId || settings.grindType || 'generic'
+    // 使用智能推荐获取实际磨豆机ID（使用最新的 Zustand 状态）
+    // 如果研磨度中已携带磨豆机ID，使用它；否则根据器具类型智能推荐
+    const recommendedGrinderId = getRecommendedGrinder(
+        selectedEquipment || null,
+        settings.myGrinders || ['generic'],
+        lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+        customEquipments
+    )
+    const actualGrinderId = currentGrinderId || recommendedGrinderId
     
     // 获取用户的磨豆机列表
     const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders)
     
-    // 获取当前磨豆机名称
-    const currentGrinderName = myGrinders.find(g => g.id === actualGrinderId)?.name || '通用'
+    // 获取当前磨豆机名称（支持从所有磨豆机中查找，包括用户未拥有但方案中设定的磨豆机）
+    const currentGrinder = findGrinder(actualGrinderId, settings.customGrinders, false)
+    const currentGrinderName = currentGrinder?.name || '通用'
     
     // 显示的研磨度值（为空时显示占位符）
     const displayValue = formatGrindSize(grindSize, settings.grindType, settings.customGrinders) || '未设置'
@@ -208,6 +225,26 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     useEffect(() => {
         setTempValue(currentGrindValue || '0')
     }, [currentGrindValue])
+    
+    // 注释掉自动转换逻辑，保留方案原本设定的磨豆机
+    // 如果方案已经携带了磨豆机ID（如自定义方案的"幻刺 Pro:12"），就保持不变
+    // 用户可以通过下拉菜单手动切换磨豆机
+    // useEffect(() => {
+    //     // 如果研磨度中没有携带磨豆机ID，且推荐的磨豆机不是通用的，需要转化
+    //     if (!currentGrinderId && recommendedGrinderId !== 'generic' && currentGrindValue) {
+    //         const convertedValue = smartConvertGrindSize(
+    //             currentGrindValue,
+    //             'generic',
+    //             recommendedGrinderId,
+    //             settings.customGrinders
+    //         )
+    //         const newGrindSize = combineGrindSize(recommendedGrinderId, convertedValue)
+    //         // 只有当转化后的值不同时才更新
+    //         if (newGrindSize !== grindSize) {
+    //             onGrindSizeChange(newGrindSize)
+    //         }
+    //     }
+    // }, [recommendedGrinderId, currentGrinderId, currentGrindValue, grindSize, settings.customGrinders, onGrindSizeChange])
 
     const handleSubmit = useCallback(() => {
         setIsEditing(false)
@@ -230,7 +267,7 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     }, [handleSubmit, handleCancel])
 
     // 处理磨豆机切换
-    const handleGrinderChange = (newGrinderId: string) => {
+    const handleGrinderChange = async (newGrinderId: string) => {
         const newGrindSizeValue = smartConvertGrindSize(
             currentGrindValue,
             actualGrinderId,
@@ -238,7 +275,18 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
             settings.customGrinders
         )
         const newGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
+        
+        // 更新研磨度值
         onGrindSizeChange(newGrindSize)
+        
+        // 记录用户的磨豆机选择（用于智能推荐）
+        await saveLastUsedGrinder(
+            selectedEquipment || null,
+            newGrinderId,
+            customEquipments
+        )
+        
+        // 关闭下拉菜单
         setIsDropdownOpen(false)
     }
     
@@ -957,6 +1005,8 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                             grindSize={displayOverlay?.grindSize || editableParams.grindSize}
                                                                             onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
                                                                             settings={settings}
+                                                                            selectedEquipment={selectedEquipment}
+                                                                            customEquipments={customEquipments}
                                                                         />
                                                                     </>
                                                                 )}
