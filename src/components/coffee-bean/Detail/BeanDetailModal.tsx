@@ -123,6 +123,9 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
     // 标题可见性状态
     const [isTitleVisible, setIsTitleVisible] = useState(true)
     
+    // 评分显示设置
+    const [showBeanRating, setShowBeanRating] = useState(false)
+    
     // 处理显示/隐藏动画
     useEffect(() => {
         if (isOpen) {
@@ -144,26 +147,30 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
         }
     }, [isOpen])
     
-    // 加载打印设置
+    // 加载打印和评分显示设置
     useEffect(() => {
-        const loadPrintSettings = async () => {
+        const loadSettings = async () => {
             try {
                 const { Storage } = await import('@/lib/core/storage')
                 const settingsStr = await Storage.get('brewGuideSettings')
                 if (settingsStr) {
                     const settings = JSON.parse(settingsStr)
-                    const enabled = settings.enableBeanPrint === true
-                    setPrintEnabled(enabled)
+                    const printEnabledValue = settings.enableBeanPrint === true
+                    const showRatingValue = settings.showBeanRating === true
+                    setPrintEnabled(printEnabledValue)
+                    setShowBeanRating(showRatingValue)
                 } else {
                     setPrintEnabled(false)
+                    setShowBeanRating(false)
                 }
             } catch (error) {
-                console.error('加载打印设置失败:', error)
+                console.error('加载设置失败:', error)
                 setPrintEnabled(false)
+                setShowBeanRating(false)
             }
         }
         
-        loadPrintSettings()
+        loadSettings()
     }, [isOpen])
     
     // 使用风味维度hook
@@ -753,59 +760,69 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
                                         )}
                                     </div>
 
-                                    {/* 个人榜单评价区域 */}
-                                    <div className="border-t border-neutral-200/40 dark:border-neutral-800/40 pt-3">
-                                        {bean.overallRating && bean.overallRating > 0 ? (
-                                            // 已有评价，显示评价内容
-                                            <div 
-                                                className="space-y-3 cursor-pointer"
-                                                onClick={() => {
-                                                    if (onRate && bean) {
-                                                        onRate(bean)
-                                                    }
-                                                }}
-                                            >
-                                                {/* 评分 */}
-                                                <div className="flex items-start">
-                                                    <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-16 flex-shrink-0">
-                                                        评分
+                                    {/* 个人榜单评价区域 - 根据设置和评分内容决定是否显示 */}
+                                    {(() => {
+                                        const hasRating = bean.overallRating && bean.overallRating > 0
+                                        // 只有在有评分内容或者开启了显示评分设置时才显示评分区域
+                                        if (!hasRating && !showBeanRating) {
+                                            return null
+                                        }
+                                        
+                                        return (
+                                            <div className="border-t border-neutral-200/40 dark:border-neutral-800/40 pt-3">
+                                                {hasRating ? (
+                                                    // 已有评价，显示评价内容
+                                                    <div 
+                                                        className="space-y-3 cursor-pointer"
+                                                        onClick={() => {
+                                                            if (onRate && bean) {
+                                                                onRate(bean)
+                                                            }
+                                                        }}
+                                                    >
+                                                        {/* 评分 */}
+                                                        <div className="flex items-start">
+                                                            <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-16 flex-shrink-0">
+                                                                评分
+                                                            </div>
+                                                            <div className="text-xs font-medium ml-4 text-neutral-800 dark:text-neutral-100">
+                                                                {bean.overallRating} / 5
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* 评价备注 */}
+                                                        {bean.ratingNotes && bean.ratingNotes.trim() && (
+                                                            <div className="flex items-start">
+                                                                <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-16 flex-shrink-0">
+                                                                    评价
+                                                                </div>
+                                                                <div className="text-xs font-medium ml-4 text-neutral-800 dark:text-neutral-100 whitespace-pre-line">
+                                                                    {bean.ratingNotes}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="text-xs font-medium ml-4 text-neutral-800 dark:text-neutral-100">
-                                                        {bean.overallRating} / 5
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* 评价备注 */}
-                                                {bean.ratingNotes && bean.ratingNotes.trim() && (
+                                                ) : (
+                                                    // 无评价，显示添加提示（只有在开启显示评分设置时才会到这里）
                                                     <div className="flex items-start">
                                                         <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-16 flex-shrink-0">
-                                                            评价
+                                                            评分
                                                         </div>
-                                                        <div className="text-xs font-medium ml-4 text-neutral-800 dark:text-neutral-100 whitespace-pre-line">
-                                                            {bean.ratingNotes}
-                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (onRate && bean) {
+                                                                    onRate(bean)
+                                                                }
+                                                            }}
+                                                            className="ml-4 text-xs font-medium text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 transition-colors"
+                                                        >
+                                                            + 添加评价
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
-                                        ) : (
-                                            // 无评价，显示添加提示
-                                            <div className="flex items-start">
-                                                <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-16 flex-shrink-0">
-                                                    评分
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        if (onRate && bean) {
-                                                            onRate(bean)
-                                                        }
-                                                    }}
-                                                    className="ml-4 text-xs font-medium text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 transition-colors"
-                                                >
-                                                    + 添加评价
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
+                                        )
+                                    })()}
 
                                     {/* 相关冲煮记录 - 简化布局 */}
                                     <div className="border-t border-neutral-200/40 dark:border-neutral-800/40 pt-3">

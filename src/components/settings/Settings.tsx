@@ -105,6 +105,8 @@ export interface SettingsOptions {
     }
     // 打印设置
     enableBeanPrint?: boolean // 是否启用咖啡豆标签保存功能
+    // 评分显示设置
+    showBeanRating?: boolean // 是否显示咖啡豆评分区域（默认false，只显示有内容的）
 }
 
 // 默认设置
@@ -181,7 +183,9 @@ export const defaultSettings: SettingsOptions = {
         extractionTime: true, // 默认启用萃取时间排序
     },
     // 打印设置默认值
-    enableBeanPrint: false // 默认关闭标签保存功能
+    enableBeanPrint: false, // 默认关闭标签保存功能
+    // 评分显示设置默认值
+    showBeanRating: false // 默认不显示评分区域（只显示有内容的）
 }
 
 interface SettingsProps {
