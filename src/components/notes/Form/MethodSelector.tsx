@@ -169,18 +169,42 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
     // 更新显示的研磨度值
     setGrindSize(newGrindSizeValue)
 
-    // 组合新的磨豆机ID和研磨度值
-    const combinedGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
-    method.params.grindSize = combinedGrindSize
+    // 🎯 关键修复：如果切换到通用磨豆机，保存为通用描述（不带ID）
+    // 如果切换到特定磨豆机，也不保存ID，只保存值（让推荐系统决定）
+    // 这样所有方案都会跟随器具的推荐磨豆机
+    let grindSizeToSave: string
     
-    // 记录用户的磨豆机选择（用于智能推荐）
+    if (newGrinderId === 'generic') {
+      // 切换到通用：将刻度转换为通用描述
+      const genericDescription = smartConvertGrindSize(
+        newGrindSizeValue,
+        newGrinderId,
+        'generic',
+        settings?.customGrinders
+      )
+      grindSizeToSave = genericDescription
+    } else {
+      // 切换到特定磨豆机：也转换为通用描述保存
+      // 这样下次加载时会使用推荐系统
+      const genericDescription = smartConvertGrindSize(
+        newGrindSizeValue,
+        newGrinderId,
+        'generic',
+        settings?.customGrinders
+      )
+      grindSizeToSave = genericDescription
+    }
+    
+    method.params.grindSize = grindSizeToSave
+    
+    // 🎯 关键：先记录用户的磨豆机选择（这样推荐系统会用它）
     await saveLastUsedGrinder(
       selectedEquipment || null,
       newGrinderId,
       customEquipments
     )
-
-    // 通知父组件参数已更改
+    
+    // 🎯 然后通知父组件参数已更改
     onParamsChange(method)
   }
 
@@ -189,21 +213,21 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
 
   // 当用户在设置中更改磨豆机列表或选择器具时,更新默认磨豆机（使用智能推荐）
   useEffect(() => {
-    // 只在没有选择方法时（新建笔记）或器具变化时更新默认磨豆机
+    // 🎯 只在没有选择方法时（新建笔记）且器具或推荐变化时更新默认磨豆机
+    // 注意：移除 selectedGrinderId 和 grindSize 依赖，避免循环触发
     if (!selectedMethod && settings) {
-      const oldGrinderId = selectedGrinderId
       const recommendedGrinderId = getRecommendedGrinder(
         selectedEquipment || null,
         settings.myGrinders || ['generic'],
-        lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
+        lastUsedGrinderByEquipment,
         customEquipments
       )
       
       // 如果推荐的磨豆机与当前不同，需要转化研磨度
-      if (recommendedGrinderId !== oldGrinderId) {
+      if (recommendedGrinderId !== selectedGrinderId) {
         const newGrindSizeValue = smartConvertGrindSize(
           grindSize,
-          oldGrinderId,
+          selectedGrinderId,
           recommendedGrinderId,
           settings.customGrinders
         )
@@ -211,7 +235,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setSelectedGrinderId(recommendedGrinderId)
       }
     }
-  }, [settings, selectedMethod, selectedEquipment, customEquipments, selectedGrinderId, grindSize, lastUsedGrinderByEquipment])
+  }, [settings, selectedMethod, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
 
   // 当选择的方法变化时，初始化参数
   useEffect(() => {
@@ -262,7 +286,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setTempValue(temp)
       }
     }
-  }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
+  }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments])
 
   // 辅助函数：提取数字部分
   function extractNumber(str: string): string {

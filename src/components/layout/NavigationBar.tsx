@@ -157,11 +157,12 @@ interface EditableGrindSizeProps {
 const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     grindSize, onGrindSizeChange, settings, className = '', disabled = false, selectedEquipment, customEquipments
 }) => {
-    // 订阅 Zustand store 中的磨豆机推荐状态
+    // 订阅 Zustand store
     const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
         state => state.lastUsedGrinderByEquipment
     );
     
+    // UI 状态
     const [isEditing, setIsEditing] = useState(false)
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
     const inputRef = React.useRef<HTMLInputElement>(null)
@@ -170,57 +171,67 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     const measureRef = React.useRef<HTMLSpanElement>(null)
     const inputMeasureRef = React.useRef<HTMLSpanElement>(null)
     
-    // 解析研磨度，提取磨豆机ID和值
-    const { grinderId: currentGrinderId, value: currentGrindValue } = parseGrindSize(grindSize)
-    
-    // 使用智能推荐获取实际磨豆机ID（使用最新的 Zustand 状态）
-    // 如果研磨度中已携带磨豆机ID，使用它；否则根据器具类型智能推荐
-    const recommendedGrinderId = getRecommendedGrinder(
-        selectedEquipment || null,
-        settings.myGrinders || ['generic'],
-        lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
-        customEquipments
-    )
-    const actualGrinderId = currentGrinderId || recommendedGrinderId
-    
-    // 获取用户的磨豆机列表
-    const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders)
-    
-    // 检测用户是否只有通用研磨度
-    const onlyHasGeneric = hasOnlyGenericGrinder(settings.myGrinders)
-    
-    // 检测当前方案是否有指定磨豆机（非通用）
-    const hasMethodGrinder = currentGrinderId && currentGrinderId !== 'generic'
-    
-    // 判断是否应该显示磨豆机选择器：方案有指定磨豆机 或 用户有多个磨豆机
-    const shouldShowGrinderSelector = hasMethodGrinder || !onlyHasGeneric
-    
-    // 获取当前磨豆机名称（支持从所有磨豆机中查找，包括用户未拥有但方案中设定的磨豆机）
-    const currentGrinder = findGrinder(actualGrinderId, settings.customGrinders, false)
-    const currentGrinderName = currentGrinder?.name || '通用'
-    
-    // 显示的研磨度值（为空时显示占位符）
-    const displayValue = formatGrindSize(grindSize, settings.grindType, settings.customGrinders) || '未设置'
-    
-    const [tempValue, setTempValue] = useState(currentGrindValue || '0')
+    // 🎯 核心：独立状态（完全参考 MethodSelector）
+    const [selectedGrinderId, setSelectedGrinderId] = useState<string>('generic')
+    const [tempValue, setTempValue] = useState<string>('0')
     const [selectWidth, setSelectWidth] = useState<number | undefined>(undefined)
     const [inputWidth, setInputWidth] = useState<number | undefined>(undefined)
     const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null)
     
-    // 测量当前文本宽度并设置 select 宽度
+    // 获取用户的磨豆机列表
+    const myGrinders = getMyGrinders(settings.myGrinders || ['generic'], settings.customGrinders)
+    const onlyHasGeneric = hasOnlyGenericGrinder(settings.myGrinders)
+    
+    // 解析当前 grindSize prop 判断是否显示选择器
+    const { grinderId: propGrinderId } = parseGrindSize(grindSize)
+    const hasMethodGrinder = propGrinderId && propGrinderId !== 'generic'
+    const shouldShowGrinderSelector = hasMethodGrinder || !onlyHasGeneric
+    
+    // 获取当前磨豆机名称
+    const currentGrinder = findGrinder(selectedGrinderId, settings.customGrinders, false)
+    const currentGrinderName = currentGrinder?.name || '通用'
+    
+    // 🎯 核心：同步外部 grindSize 到本地状态
+    useEffect(() => {
+        const { grinderId, value } = parseGrindSize(grindSize)
+        
+        // 🎯 关键：使用智能推荐获取默认磨豆机（如果研磨度没有携带磨豆机ID）
+        // 注意：这里使用当前的 lastUsedGrinderByEquipment 值，但不作为依赖项
+        const recommendedGrinderId = getRecommendedGrinder(
+            selectedEquipment || null,
+            settings.myGrinders || ['generic'],
+            lastUsedGrinderByEquipment,
+            customEquipments
+        )
+        
+        const actualGrinderId = grinderId || recommendedGrinderId
+        setSelectedGrinderId(actualGrinderId)
+        
+        // 🎯 关键：如果使用了推荐的磨豆机（即方案本身没有携带磨豆机ID），需要转化研磨度
+        let finalGrindSize = value || '0'
+        if (!grinderId && actualGrinderId !== 'generic' && value) {
+            // 将通用研磨度描述转换为推荐磨豆机的刻度
+            finalGrindSize = smartConvertGrindSize(
+                value,
+                'generic',
+                actualGrinderId,
+                settings.customGrinders
+            )
+        }
+        
+        setTempValue(finalGrindSize)
+    }, [grindSize])
+    
+    // 测量宽度
     useEffect(() => {
         if (measureRef.current) {
-            const width = measureRef.current.offsetWidth
-            setSelectWidth(width)
+            setSelectWidth(measureRef.current.offsetWidth)
         }
     }, [currentGrinderName])
     
-    // 测量输入框文本宽度
     useEffect(() => {
         if (inputMeasureRef.current) {
-            // 使用实际值或占位符来测量宽度
-            const width = inputMeasureRef.current.offsetWidth
-            setInputWidth(Math.max(width, 20)) // 最小宽度改为20px，确保即使为空也能显示
+            setInputWidth(Math.max(inputMeasureRef.current.offsetWidth, 20))
         }
     }, [tempValue])
 
@@ -230,10 +241,6 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
             inputRef.current.select()
         }
     }, [isEditing])
-
-    useEffect(() => {
-        setTempValue(currentGrindValue || '0')
-    }, [currentGrindValue])
     
     // 注释掉自动转换逻辑，保留方案原本设定的磨豆机
     // 如果方案已经携带了磨豆机ID（如自定义方案的"幻刺 Pro:12"），就保持不变
@@ -259,45 +266,56 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
         setIsEditing(false)
         // 即使值为空，也要保留磨豆机信息，使用 "0" 作为默认值
         const valueToUse = tempValue.trim() || '0'
-        const newGrindSize = combineGrindSize(actualGrinderId, valueToUse)
+        const newGrindSize = combineGrindSize(selectedGrinderId, valueToUse)
         if (newGrindSize !== grindSize) {
             onGrindSizeChange(newGrindSize)
         }
-    }, [tempValue, grindSize, actualGrinderId, onGrindSizeChange])
+    }, [tempValue, grindSize, selectedGrinderId, onGrindSizeChange])
 
     const handleCancel = useCallback(() => {
-        setTempValue(currentGrindValue || '0')
+        // 🎯 修复：取消时恢复到当前的研磨度值
+        const { value } = parseGrindSize(grindSize)
+        setTempValue(value || '0')
         setIsEditing(false)
-    }, [currentGrindValue])
+    }, [grindSize])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') handleSubmit()
         else if (e.key === 'Escape') handleCancel()
     }, [handleSubmit, handleCancel])
 
-    // 处理磨豆机切换
-    const handleGrinderChange = async (newGrinderId: string) => {
-        const newGrindSizeValue = smartConvertGrindSize(
-            currentGrindValue,
-            actualGrinderId,
-            newGrinderId,
-            settings.customGrinders
-        )
-        const newGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
+    // 🎯 处理磨豆机切换（参考 MethodSelector 的实现）
+    const handleGrinderChange = useCallback(async (newGrinderId: string) => {
+        const oldGrinderId = selectedGrinderId
         
-        // 更新研磨度值
-        onGrindSizeChange(newGrindSize)
-        
-        // 记录用户的磨豆机选择（用于智能推荐）
-        await saveLastUsedGrinder(
+        // 🎯 Step 1: 立即更新 Zustand store（这样其他组件能立即响应）
+        const { useGrinderRecommendationStore } = await import('@/lib/stores/grinderRecommendationStore')
+        const store = useGrinderRecommendationStore.getState()
+        await store.updateLastUsedGrinder(
             selectedEquipment || null,
             newGrinderId,
             customEquipments
         )
         
+        // 🎯 Step 2: 立即更新本地状态
+        setSelectedGrinderId(newGrinderId)
+        
+        // 🎯 Step 3: 转换研磨度值
+        const newGrindSizeValue = smartConvertGrindSize(
+            tempValue,
+            oldGrinderId,
+            newGrinderId,
+            settings.customGrinders
+        )
+        setTempValue(newGrindSizeValue)
+        
+        // 🎯 Step 4: 组合新的研磨度字符串并通知外部
+        const newGrindSize = combineGrindSize(newGrinderId, newGrindSizeValue)
+        onGrindSizeChange(newGrindSize)
+        
         // 关闭下拉菜单
         setIsDropdownOpen(false)
-    }
+    }, [selectedGrinderId, tempValue, settings.customGrinders, selectedEquipment, customEquipments, onGrindSizeChange])
     
     // 计算下拉菜单位置
     const updateDropdownPosition = useCallback(() => {
@@ -340,6 +358,7 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     }, [isDropdownOpen])
 
     if (disabled) {
+        const displayValue = formatGrindSize(grindSize, settings.grindType, settings.customGrinders) || '未设置'
         return (
             <span className={`inline-flex items-center ${className}`}>
                 <span className="whitespace-nowrap">{displayValue}</span>
@@ -413,7 +432,7 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
                                     key={grinder.id}
                                     onClick={() => handleGrinderChange(grinder.id)}
                                     className={`px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100 ${
-                                        grinder.id === actualGrinderId
+                                        grinder.id === selectedGrinderId
                                             ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
                                             : 'text-neutral-600 dark:text-neutral-400 '
                                     }`}
@@ -450,8 +469,8 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
                         className="bg-transparent text-xs outline-hidden whitespace-nowrap overflow-hidden w-full placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
                 ) : (
-                    <span className={`whitespace-nowrap text-xs overflow-hidden ${!currentGrindValue ? 'text-neutral-400 dark:text-neutral-600' : ''}`}>
-                        {currentGrindValue || '0'}
+                    <span className={`whitespace-nowrap text-xs overflow-hidden ${!tempValue ? 'text-neutral-400 dark:text-neutral-600' : ''}`}>
+                        {tempValue || '0'}
                     </span>
                 )}
             </span>
@@ -642,6 +661,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
 
     useEffect(() => {
         const handleStepChanged = async (detail: { step: BrewingStep }) => {
+            // 🎯 简化：直接传递原始方案数据，不做任何转换
             const methodForUpdate = selectedMethod ? {
                 name: selectedMethod.name,
                 params: {
@@ -659,7 +679,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                 updateParameterInfo(detail.step, selectedEquipment, methodForUpdate, equipmentList)
             }
             
-            // 🎯 步骤改变时清除显示叠加层
+            // 步骤改变时清除显示叠加层
             setDisplayOverlay(null)
         }
 
@@ -1038,13 +1058,18 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                             <div
                                                                 className="cursor-pointer flex items-center space-x-1 sm:space-x-2 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
                                                                 onClick={() => {
-                                                                    if (selectedMethod && !isTimerRunning) {
+                                                                    // 🎯 修复：直接从 parameterInfo.params 获取最新的参数值，而不是从 selectedMethod
+                                                                    // 因为 parameterInfo 是通过事件更新的，包含了用户在方案列表中的所有修改
+                                                                    if (parameterInfo.params && !isTimerRunning) {
+                                                                        // 🔍 调试
+                                                                        console.log('[NavigationBar] 初始化 editableParams，parameterInfo.params.grindSize:', parameterInfo.params.grindSize);
+                                                                        
                                                                         setEditableParams({
-                                                                            coffee: selectedMethod.params.coffee,
-                                                                            water: selectedMethod.params.water,
-                                                                            ratio: selectedMethod.params.ratio,
-                                                                            grindSize: selectedMethod.params.grindSize,
-                                                                            temp: selectedMethod.params.temp,
+                                                                            coffee: parameterInfo.params.coffee || '',
+                                                                            water: parameterInfo.params.water || '',
+                                                                            ratio: parameterInfo.params.ratio || '',
+                                                                            grindSize: parameterInfo.params.grindSize || '',
+                                                                            temp: parameterInfo.params.temp || '',
                                                                         })
                                                                     }
                                                                 }}
