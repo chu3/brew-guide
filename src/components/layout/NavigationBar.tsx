@@ -6,7 +6,7 @@ import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
 import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
-import { saveLastUsedGrinder, getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
+import { getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
 import { listenToEvent } from '@/lib/brewing/events'
@@ -220,7 +220,7 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
         }
         
         setTempValue(finalGrindSize)
-    }, [grindSize])
+    }, [grindSize, selectedEquipment, lastUsedGrinderByEquipment, settings.myGrinders, settings.customGrinders, customEquipments])
     
     // 测量宽度
     useEffect(() => {
@@ -1061,8 +1061,6 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                     // 🎯 修复：直接从 parameterInfo.params 获取最新的参数值，而不是从 selectedMethod
                                                                     // 因为 parameterInfo 是通过事件更新的，包含了用户在方案列表中的所有修改
                                                                     if (parameterInfo.params && !isTimerRunning) {
-                                                                        // 🔍 调试
-                                                                        console.log('[NavigationBar] 初始化 editableParams，parameterInfo.params.grindSize:', parameterInfo.params.grindSize);
                                                                         
                                                                         setEditableParams({
                                                                             coffee: parameterInfo.params.coffee || '',

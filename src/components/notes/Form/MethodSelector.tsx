@@ -235,7 +235,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setSelectedGrinderId(recommendedGrinderId)
       }
     }
-  }, [settings, selectedMethod, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
+  }, [settings, selectedMethod, selectedEquipment, customEquipments, lastUsedGrinderByEquipment, grindSize, selectedGrinderId])
 
   // 当选择的方法变化时，初始化参数
   useEffect(() => {
@@ -286,7 +286,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setTempValue(temp)
       }
     }
-  }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments])
+  }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
 
   // 辅助函数：提取数字部分
   function extractNumber(str: string): string {
