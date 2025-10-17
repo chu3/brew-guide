@@ -661,7 +661,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                     return (
                                         <div
                                             key={grinder.id}
-                                            className="relative bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
+                                            className="relative rounded bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
                                         >
                                             {/* 删除按钮背景层 */}
                                             <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center">
@@ -759,7 +759,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                         <button
                                             key={grinder.id}
                                             onClick={() => addGrinderToMyList(grinder.id)}
-                                            className="w-full flex items-center justify-between p-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors group"
+                                            className="w-full flex items-center justify-between rouneded p-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors group"
                                         >
                                             <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                                                 {grinder.name}
@@ -773,7 +773,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                             setIsAddingGrinder(false);
                                             startCreatingCustomGrinder();
                                         }}
-                                        className="w-full py-2.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 border border-dashed border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-600 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+                                        className="w-full py-2.5 text-sm font-medium rounded text-neutral-600 dark:text-neutral-400 border border-dashed border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-600 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
                                     >
                                         + 创建自定义磨豆机
                                     </button>
@@ -814,7 +814,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                     value={customGrinderForm.name}
                                     onChange={(e) => setCustomGrinderForm(prev => ({ ...prev, name: e.target.value }))}
                                     placeholder="请输入磨豆机名称"
-                                    className="w-full px-3 py-2 text-sm bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                                    className="w-full px-3 py-2 text-sm rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-neutral-500"
                                 />
                             </div>
 
@@ -843,7 +843,7 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                                     value={customGrinderForm.unit}
                                     onChange={(e) => updateUnit(e.target.value)}
                                     placeholder="或输入自定义单位"
-                                    className="w-full px-3 py-2 text-sm bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                                    className="w-full px-3 py-2 text-sm bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 rounded text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-neutral-500"
                                 />
                                 <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                                     选择单位后，在下方输入框中只需输入数值，单位会显示在输入框后方
@@ -922,13 +922,13 @@ const GrinderSettings: React.FC<GrinderSettingsProps> = ({
                             <div className="flex gap-2">
                                 <button
                                     onClick={saveCustomGrinder}
-                                    className="flex-1 py-2 text-sm font-medium bg-neutral-700 dark:bg-neutral-600 text-white rounded-lg hover:bg-neutral-800 dark:hover:bg-neutral-500 transition-colors"
+                                    className="flex-1 py-2 text-sm font-medium bg-neutral-700 dark:bg-neutral-600 text-white rounded hover:bg-neutral-800 dark:hover:bg-neutral-500 transition-colors"
                                 >
                                     保存
                                 </button>
                                 <button
                                     onClick={importCustomGrinder}
-                                    className="px-4 py-2 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                                    className="px-4 py-2 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                                 >
                                     导入
                                 </button>
