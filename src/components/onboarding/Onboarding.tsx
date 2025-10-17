@@ -5,7 +5,6 @@ import { SettingsOptions, defaultSettings } from '@/components/settings/Settings
 import fontZoomUtils from '@/lib/utils/fontZoomUtils'
 // 移除未使用的confetti导入
 import { availableGrinders } from '@/lib/core/config'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/coffee-bean/ui/select'
 
 // 设置页面界面属性
 interface OnboardingProps {
@@ -19,6 +18,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onSettingsChange, onComplete })
     const [settings, setSettings] = useState<SettingsOptions>(defaultSettings)
     // 检查字体缩放功能是否可用
     const [isFontZoomEnabled, setIsFontZoomEnabled] = useState(false)
+    // 是否显示磨豆机选择界面
+    const [showGrinderSelect, setShowGrinderSelect] = useState(false)
 
     // 初始化
     useEffect(() => {
@@ -133,44 +134,40 @@ const Onboarding: React.FC<OnboardingProps> = ({ onSettingsChange, onComplete })
                                 )}
 
                                 {/* 磨豆机选择 */}
-                                {/* 磨豆机选择 */}
                                 <div id="onboarding-grinder-select-wrapper" className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-xl">
                                     <label className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mb-1 block">
-                                        磨豆机型号
+                                        磨豆机
                                     </label>
-                                    <div className="relative">
-                                        <Select
-                                            value={settings.grindType}
-                                            onValueChange={(value) => handleSettingChange('grindType', value)}
-                                        >
-                                            <SelectTrigger 
-                                                variant="minimal"
-                                                className="w-full py-2 px-3 text-sm font-medium rounded-lg bg-neutral-50 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 focus:outline-hidden focus:ring-2 focus:ring-neutral-500 border border-neutral-200 dark:border-neutral-600"
-                                            >
-                                                <SelectValue placeholder="选择磨豆机" />
-                                                <svg 
-                                                    className="h-4 w-4 ml-1 text-neutral-500" 
-                                                    xmlns="http://www.w3.org/2000/svg" 
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
+                                    
+                                    {/* 显示已选择的磨豆机 */}
+                                    <div className="mt-3 space-y-2">
+                                        {(settings.myGrinders || ['generic']).map((grinderId) => {
+                                            const grinder = availableGrinders.find(g => g.id === grinderId)
+                                            if (!grinder) return null
+                                            
+                                            return (
+                                                <div
+                                                    key={grinderId}
+                                                    className="flex items-center justify-between py-2 px-3 bg-neutral-50 dark:bg-neutral-700 rounded-lg"
                                                 >
-                                                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                                                </svg>
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-[40vh] overflow-y-auto">
-                                                {availableGrinders.map((grinder) => (
-                                                    <SelectItem
-                                                        key={grinder.id}
-                                                        value={grinder.id}
-                                                    >
+                                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                                                         {grinder.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                                    </span>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
+                                    
+                                    {/* 添加磨豆机按钮 */}
+                                    <button
+                                        onClick={() => setShowGrinderSelect(true)}
+                                        className="w-full mt-3 py-2 px-3 text-sm font-medium rounded-lg bg-neutral-50 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
+                                    >
+                                        + 添加/移除磨豆机
+                                    </button>
+                                    
                                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-                                        选择你的磨豆机以获得研磨度参考，后续可在设置中自定义
+                                        选择你拥有的磨豆机，后续可在设置中调整或添加自定义磨豆机
                                     </p>
                                 </div>
 
@@ -204,6 +201,79 @@ const Onboarding: React.FC<OnboardingProps> = ({ onSettingsChange, onComplete })
                     </div>
                 </div>
             </div>
+
+            {/* 磨豆机选择弹窗 */}
+            {showGrinderSelect && (
+                <div className="absolute inset-0 z-10 flex flex-col bg-neutral-50 dark:bg-neutral-900">
+                    {/* 头部 */}
+                    <div className="flex items-center justify-between px-5 py-4">
+                        <button
+                            onClick={() => setShowGrinderSelect(false)}
+                            className="text-sm font-medium text-neutral-600 dark:text-neutral-400"
+                        >
+                            返回
+                        </button>
+                        <h3 className="text-base font-semibold text-neutral-800 dark:text-neutral-200">
+                            选择磨豆机
+                        </h3>
+                        <div className="w-12" /> {/* 占位平衡布局 */}
+                    </div>
+
+                    {/* 磨豆机列表 */}
+                    <div className="flex-1 overflow-y-auto px-5 space-y-2">
+                        {availableGrinders.map((grinder) => {
+                            const isSelected = (settings.myGrinders || ['generic']).includes(grinder.id)
+                            const isOnlyOne = (settings.myGrinders || ['generic']).length === 1
+                            
+                            return (
+                                <button
+                                    key={grinder.id}
+                                    onClick={() => {
+                                        const currentList = settings.myGrinders || ['generic']
+                                        let newList: string[]
+                                        
+                                        if (isSelected) {
+                                            // 取消选择（至少保留一个）
+                                            if (isOnlyOne) return
+                                            newList = currentList.filter(id => id !== grinder.id)
+                                        } else {
+                                            // 添加选择
+                                            newList = [...currentList, grinder.id]
+                                        }
+                                        
+                                        handleSettingChange('myGrinders', newList)
+                                        
+                                        // 如果当前选中的 grindType 被移除，更新为列表中的第一个
+                                        if (!newList.includes(settings.grindType)) {
+                                            handleSettingChange('grindType', newList[0])
+                                        }
+                                    }}
+                                    disabled={isSelected && isOnlyOne}
+                                    className={`w-full py-3 px-4 text-sm font-medium rounded-lg transition-colors text-left flex items-center justify-between ${
+                                        isSelected
+                                            ? 'bg-neutral-800 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-800'
+                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                                    } ${isSelected && isOnlyOne ? 'opacity-50' : ''}`}
+                                >
+                                    <span>{grinder.name}</span>
+                                    {isSelected && (
+                                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                </button>
+                            )
+                        })}
+                    </div>
+
+                    {/* 提示信息 */}
+                    <div className="px-5 pb-6 pt-4">
+                        <p className="text-xs text-center text-neutral-500 dark:text-neutral-400">
+                            至少选择一个磨豆机
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
