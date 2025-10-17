@@ -161,7 +161,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onSettingsChange, onComplete })
                                     {/* 添加磨豆机按钮 */}
                                     <button
                                         onClick={() => setShowGrinderSelect(true)}
-                                        className="w-full mt-3 py-2 px-3 text-sm font-medium rounded-lg bg-neutral-50 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
+                                        className="w-full mt-3 py-2 px-3 text-sm text-left font-medium rounded-lg bg-neutral-50 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
                                     >
                                         + 添加/移除磨豆机
                                     </button>
