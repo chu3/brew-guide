@@ -218,8 +218,18 @@ export function formatGrindSize(
 	// 解析研磨度字符串
 	const { grinderId, value } = parseGrindSize(grindSize);
 	
-	// 确定实际使用的磨豆机ID（优先使用研磨度中携带的ID，否则使用全局设置）
-	const actualGrinderId = grinderId || grindType;
+	// 🎯 关键修复：如果笔记本身没有携带磨豆机ID，说明用户使用的是通用研磨度
+	// 不应该使用全局设置的 grindType 作为 fallback，因为：
+	// 1. 用户可能之前使用过自定义磨豆机，但后来改用通用研磨度
+	// 2. 全局 grindType 可能仍然指向旧的自定义磨豆机
+	// 3. 这样会导致笔记列表显示错误的磨豆机信息
+	if (!grinderId) {
+		// 没有携带磨豆机ID，直接显示为通用研磨度
+		return value;
+	}
+	
+	// 如果携带了磨豆机ID
+	const actualGrinderId = grinderId;
 
 	// 如果是通用类型，直接返回值
 	if (actualGrinderId === 'generic') {
