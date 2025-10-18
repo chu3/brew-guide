@@ -2,22 +2,33 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Equal, ArrowLeft, ChevronsUpDown } from 'lucide-react'
+
 import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
-import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder, hasOnlyGenericGrinder, hasSpecificGrindScale, getGrindScaleUnit } from '@/lib/utils/grindUtils'
+import { 
+    formatGrindSize, 
+    parseGrindSize, 
+    getMyGrinders, 
+    combineGrindSize, 
+    smartConvertGrindSize, 
+    findGrinder, 
+    hasOnlyGenericGrinder, 
+    hasSpecificGrindScale, 
+    getGrindScaleUnit 
+} from '@/lib/utils/grindUtils'
 import { getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
 import { listenToEvent } from '@/lib/brewing/events'
 import { updateParameterInfo, getEquipmentName } from '@/lib/brewing/parameters'
+import { saveMainTabPreference } from '@/lib/navigation/navigationCache'
+import { ViewOption, VIEW_LABELS } from '@/components/coffee-bean/List/types'
 import EquipmentBar from '@/components/equipment/EquipmentBar'
 import EquipmentManagementDrawer from '@/components/equipment/EquipmentManagementDrawer'
 
-import { Equal, ArrowLeft, ChevronsUpDown } from 'lucide-react'
-import { saveMainTabPreference } from '@/lib/navigation/navigationCache'
-import { ViewOption, VIEW_LABELS } from '@/components/coffee-bean/List/types'
-
+// ==================== Types & Interfaces ====================
 type MainTabType = '冲煮' | '咖啡豆' | '笔记'
 type BrewingStep = 'coffeeBean' | 'method' | 'brewing' | 'notes'
 
@@ -36,9 +47,82 @@ interface TabButtonProps {
     dataTab?: string
 }
 
-const TabButton: React.FC<TabButtonProps> = ({
-    tab, isActive, onClick, dataTab
-}) => {
+interface EditableParameterProps {
+    value: string
+    onChange: (value: string) => void
+    unit: string
+    className?: string
+    prefix?: string
+    disabled?: boolean
+}
+
+interface EditableGrindSizeProps {
+    grindSize: string
+    onGrindSizeChange: (value: string) => void
+    settings: SettingsOptions
+    className?: string
+    disabled?: boolean
+    selectedEquipment?: string | null
+    customEquipments?: CustomEquipment[]
+}
+
+interface NavigationBarProps {
+    activeMainTab: MainTabType;
+    setActiveMainTab: (tab: MainTabType) => void;
+    activeBrewingStep: BrewingStep;
+    parameterInfo: ParameterInfo;
+    setParameterInfo: (info: ParameterInfo) => void;
+    editableParams: EditableParams | null;
+    setEditableParams: (params: EditableParams | null) => void;
+    isTimerRunning: boolean;
+    showComplete: boolean;
+    selectedEquipment: string | null;
+    selectedMethod: {
+        name: string;
+        params: {
+            coffee: string;
+            water: string;
+            ratio: string;
+            grindSize: string;
+            temp: string;
+            stages: Array<{
+                label: string;
+                time: number;
+                water: string;
+                detail: string;
+            }>;
+        };
+    } | null;
+    handleParamChange: (type: keyof EditableParams, value: string) => void;
+    setShowHistory: (show: boolean) => void;
+    onTitleDoubleClick: () => void;
+    settings: SettingsOptions;
+    hasCoffeeBeans?: boolean;
+    alternativeHeader?: React.ReactNode;
+    showAlternativeHeader?: boolean;
+    currentBeanView?: ViewOption;
+    showViewDropdown?: boolean;
+    onToggleViewDropdown?: () => void;
+    handleExtractionTimeChange?: (time: number) => void;
+    customEquipments?: CustomEquipment[];
+    onEquipmentSelect?: (equipmentId: string) => void;
+    onAddEquipment?: () => void;
+    onEditEquipment?: (equipment: CustomEquipment) => void;
+    onDeleteEquipment?: (equipment: CustomEquipment) => void;
+    onShareEquipment?: (equipment: CustomEquipment) => void;
+    onBackClick?: () => void;
+}
+
+// ==================== Helper Functions ====================
+const canGoBack = (activeBrewingStep: BrewingStep, activeMainTab: MainTabType, hasCoffeeBeans?: boolean): boolean => {
+    if (activeMainTab !== '冲煮') return false
+    if (activeBrewingStep === 'coffeeBean') return false
+    if (activeBrewingStep === 'method' && !hasCoffeeBeans) return false
+    return true
+}
+
+// ==================== Sub-components ====================
+const TabButton: React.FC<TabButtonProps> = ({ tab, isActive, onClick, dataTab }) => {
     return (
         <div
             onClick={onClick}
@@ -54,15 +138,6 @@ const TabButton: React.FC<TabButtonProps> = ({
             </span>
         </div>
     )
-}
-
-interface EditableParameterProps {
-    value: string
-    onChange: (value: string) => void
-    unit: string
-    className?: string
-    prefix?: string
-    disabled?: boolean
 }
 
 const EditableParameter: React.FC<EditableParameterProps> = ({
@@ -133,16 +208,6 @@ const EditableParameter: React.FC<EditableParameterProps> = ({
             )}
         </span>
     )
-}
-
-interface EditableGrindSizeProps {
-    grindSize: string
-    onGrindSizeChange: (value: string) => void
-    settings: SettingsOptions
-    className?: string
-    disabled?: boolean
-    selectedEquipment?: string | null
-    customEquipments?: CustomEquipment[]
 }
 
 const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
@@ -380,61 +445,7 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     )
 }
 
-interface NavigationBarProps {
-    activeMainTab: MainTabType;
-    setActiveMainTab: (tab: MainTabType) => void;
-    activeBrewingStep: BrewingStep;
-    parameterInfo: ParameterInfo;
-    setParameterInfo: (info: ParameterInfo) => void;
-    editableParams: EditableParams | null;
-    setEditableParams: (params: EditableParams | null) => void;
-    isTimerRunning: boolean;
-    showComplete: boolean;
-    selectedEquipment: string | null;
-    selectedMethod: {
-        name: string;
-        params: {
-            coffee: string;
-            water: string;
-            ratio: string;
-            grindSize: string;
-            temp: string;
-            stages: Array<{
-                label: string;
-                time: number;
-                water: string;
-                detail: string;
-            }>;
-        };
-    } | null;
-    handleParamChange: (type: keyof EditableParams, value: string) => void;
-    setShowHistory: (show: boolean) => void;
-    onTitleDoubleClick: () => void;
-    settings: SettingsOptions;
-    hasCoffeeBeans?: boolean;
-    alternativeHeader?: React.ReactNode;
-    showAlternativeHeader?: boolean;
-    currentBeanView?: ViewOption;
-    showViewDropdown?: boolean;
-    onToggleViewDropdown?: () => void;
-    handleExtractionTimeChange?: (time: number) => void;
-    customEquipments?: CustomEquipment[];
-    onEquipmentSelect?: (equipmentId: string) => void;
-    onAddEquipment?: () => void;
-    onEditEquipment?: (equipment: CustomEquipment) => void;
-    onDeleteEquipment?: (equipment: CustomEquipment) => void;
-    onShareEquipment?: (equipment: CustomEquipment) => void;
-    onBackClick?: () => void;
-}
-
-
-
-const canGoBack = (activeBrewingStep: BrewingStep, activeMainTab: MainTabType, hasCoffeeBeans?: boolean): boolean => {
-    if (activeMainTab !== '冲煮') return false
-    if (activeBrewingStep === 'coffeeBean') return false
-    if (activeBrewingStep === 'method' && !hasCoffeeBeans) return false
-    return true
-}
+// ==================== Main Component ====================
 
 const NavigationBar: React.FC<NavigationBarProps> = ({
     activeMainTab, setActiveMainTab, activeBrewingStep,
@@ -446,11 +457,23 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
     handleExtractionTimeChange: _handleExtractionTimeChange, customEquipments = [], onEquipmentSelect,
     onAddEquipment, onEditEquipment, onDeleteEquipment, onShareEquipment, onBackClick,
 }) => {
-    const showBackButton = canGoBack(activeBrewingStep, activeMainTab, hasCoffeeBeans) && onBackClick
-    
+    // ========== State ==========
     const [isManagementDrawerOpen, setIsManagementDrawerOpen] = useState(false)
     const [displayOverlay, setDisplayOverlay] = useState<Partial<EditableParams> | null>(null)
-
+    
+    // ========== Computed Values ==========
+    const showBackButton = canGoBack(activeBrewingStep, activeMainTab, hasCoffeeBeans) && onBackClick
+    const shouldHideHeader = activeBrewingStep === 'brewing' && isTimerRunning && !showComplete
+    const shouldShowContent = activeMainTab === '冲煮' && (!isTimerRunning || showComplete || activeBrewingStep === 'notes')
+    const shouldShowParams = parameterInfo.method
+    
+    // ========== Helper Functions ==========
+    const getCurrentViewLabel = () => currentBeanView ? VIEW_LABELS[currentBeanView] : '咖啡豆'
+    
+    const getSelectedEquipmentName = () => 
+        selectedEquipment ? getEquipmentName(selectedEquipment, equipmentList, customEquipments) : null
+    
+    // ========== Event Handlers ==========
     const handleToggleManagementDrawer = () => {
         setIsManagementDrawerOpen(!isManagementDrawerOpen)
     }
@@ -475,8 +498,6 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         }
     }
 
-    const getCurrentViewLabel = () => currentBeanView ? VIEW_LABELS[currentBeanView] : '咖啡豆'
-
     const handleBeanTabClick = () => {
         if (activeMainTab === '咖啡豆') {
             onToggleViewDropdown?.()
@@ -490,6 +511,23 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         showBackButton ? onBackClick() : onTitleDoubleClick()
     }
 
+    const handleMainTabClick = (tab: MainTabType) => {
+        if (activeMainTab === tab) return
+
+        if (settings.hapticFeedback) hapticsUtils.light()
+
+        saveMainTabPreference(tab)
+        setActiveMainTab(tab)
+        
+        if (tab === '笔记') {
+            setShowHistory(true)
+        } else if (activeMainTab === '笔记') {
+            setShowHistory(false)
+        }
+    }
+
+    // ========== Effects ==========
+    // Effect: Listen to brewing events
     useEffect(() => {
         const handleStepChanged = async (detail: { step: BrewingStep }) => {
             updateParameterInfo(
@@ -509,6 +547,8 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
             unsubscribeParamsUpdated()
         }
     }, [selectedEquipment, selectedMethod, customEquipments, setParameterInfo])
+    
+    // Effect: Handle navbar display updates
     useEffect(() => {
         if (!editableParams || activeBrewingStep !== 'notes') {
             setDisplayOverlay(null)
@@ -565,28 +605,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         }
     }, [activeBrewingStep, editableParams])
 
-    const shouldHideHeader = activeBrewingStep === 'brewing' && isTimerRunning && !showComplete
-
-    const handleMainTabClick = (tab: MainTabType) => {
-        if (activeMainTab === tab) return
-
-        if (settings.hapticFeedback) hapticsUtils.light()
-
-        saveMainTabPreference(tab)
-        setActiveMainTab(tab)
-        
-        if (tab === '笔记') {
-            setShowHistory(true)
-        } else if (activeMainTab === '笔记') {
-            setShowHistory(false)
-        }
-    }
-
-    const shouldShowContent = activeMainTab === '冲煮' && (!isTimerRunning || showComplete || activeBrewingStep === 'notes')
-    const shouldShowParams = parameterInfo.method
-
-    const getSelectedEquipmentName = () => 
-        selectedEquipment ? getEquipmentName(selectedEquipment, equipmentList, customEquipments) : null
+    // ========== Render ==========
 
     return (
         <motion.div
