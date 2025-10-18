@@ -17,7 +17,7 @@ export interface MethodParams {
 	ratio: string;
 	grindSize: string;
 	temp: string;
-	videoUrl: string;
+	videoUrl?: string;
 	roastLevel?: string;
 	stages: Stage[];
 }

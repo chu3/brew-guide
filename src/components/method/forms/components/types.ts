@@ -26,7 +26,7 @@ export interface MethodWithStages extends Omit<Method, 'params'> {
     ratio: string;
     grindSize: string;
     temp: string;
-    videoUrl: string;
+    videoUrl?: string;
     roastLevel?: string;
     stages: Stage[];
     // 意式机特有参数

@@ -941,7 +941,7 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                         {selectedCoffeeBean?.name || formData.coffeeBeanInfo.name || '未知咖啡豆'}
                                     </span>
                                 ) : (
-                                    <span className="ml-1">{selectedCoffeeBean?.name || formData.coffeeBeanInfo.name || '未知咖啡豆'}</span>
+                                    <span>{selectedCoffeeBean?.name || formData.coffeeBeanInfo.name || '未知咖啡豆'}</span>
                                 )}
                                 {/* 风味入口 - 直接跟在咖啡豆名称后面，仅当有风味信息时显示 */}
                                 {selectedCoffeeBean?.flavor && selectedCoffeeBean.flavor.length > 0 && (
