@@ -645,7 +645,8 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         }
 
         if (canGoBack() && onBackClick) {
-            // 直接调用返回函数，让父组件统一处理返回逻辑（包括历史栈管理）
+            // 🎯 修复：直接调用 onBackClick，让它内部处理历史栈逻辑
+            // onBackClick 会检查 window.history.state?.brewingStep 并决定是否调用 history.back()
             onBackClick()
         } else {
             onTitleDoubleClick()
