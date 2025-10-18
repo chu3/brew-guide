@@ -48,6 +48,9 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
   )
   const [customEquipments, setCustomEquipments] = useState<CustomEquipment[]>([])
 
+  // 添加总时长状态
+  const [totalTime, setTotalTime] = useState<number>(initialNote?.totalTime || 0)
+
   // 步骤控制
   const [currentStep, setCurrentStep] = useState<number>(0)
 
@@ -230,10 +233,25 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
     const methodIdentifier = method.id || method.name;
     setSelectedMethod(methodIdentifier);
 
+    // 计算总时长
+    let calculatedTotalTime = 0;
+    if (method.params.stages && method.params.stages.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      calculatedTotalTime = method.params.stages.reduce((total: number, stage: any) => total + (stage.time || 0), 0);
+    }
+
+    // 更新总时长状态
+    setTotalTime(calculatedTotalTime);
+    // 直接更新状态
+    setTotalTime(calculatedTotalTime);
+
     // 延迟触发事件，避免在渲染期间触发
     setTimeout(() => {
       const event = new CustomEvent('methodParamsChanged', {
-        detail: { params: method.params }
+        detail: { 
+          params: method.params,
+          totalTime: calculatedTotalTime // 添加总时长
+        }
       });
       document.dispatchEvent(event);
     }, 0);
@@ -307,6 +325,7 @@ const BrewingNoteFormModal: React.FC<BrewingNoteFormModalProps> = ({
         roastDate: initialNote?.coffeeBeanInfo?.roastDate || ''
       },
       params: initialNote?.params || params,
+      totalTime: totalTime, // 使用状态中的 totalTime
       rating: initialNote?.rating || 3,
       taste: initialNote?.taste || {
         acidity: 0,

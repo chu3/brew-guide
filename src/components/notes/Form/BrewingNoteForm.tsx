@@ -230,6 +230,9 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
         temp: getParamValue(initialData?.params?.temp, 'temp'),
     });
 
+    // 添加总时长状态
+    const [totalTime, setTotalTime] = useState<number>(initialData?.totalTime || 0);
+
     // 分离的数值状态（用于输入框显示）
     const [numericValues, setNumericValues] = useState(() => ({
         coffee: extractNumericValue(getParamValue(initialData?.params?.coffee, 'coffee')),
@@ -245,6 +248,24 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
     const [showEquipmentMethodSelector, setShowEquipmentMethodSelector] = useState(false);
     const [selectedEquipment, setSelectedEquipment] = useState(initialData.equipment || '');
     const [selectedMethod, setSelectedMethod] = useState(initialData.method || '');
+
+    // 判断是否是意式器具
+    const isEspressoEquipment = React.useMemo(() => {
+        if (!selectedEquipment) return false;
+        
+        // 检查是否是系统预设的意式机
+        if (selectedEquipment === 'Espresso') return true;
+        
+        // 检查自定义器具
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const customEquipment = availableEquipments.find((eq: any) => 
+            'isCustom' in eq && eq.isCustom && eq.id === selectedEquipment
+        ) as CustomEquipment | undefined;
+        
+        if (customEquipment && customEquipment.animationType === 'espresso') return true;
+        
+        return false;
+    }, [selectedEquipment, availableEquipments]);
 
     const formRef = useRef<HTMLFormElement>(null);
     const [currentSliderValue, setCurrentSliderValue] = useState<number | null>(null);
@@ -459,6 +480,11 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                     grindSize: params.grindSize || prev.grindSize,
                     temp: params.temp || prev.temp
                 }));
+                
+                // 更新总时长
+                if (e.detail.totalTime !== undefined) {
+                    setTotalTime(e.detail.totalTime);
+                }
             }
         };
 
@@ -668,7 +694,6 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
 
     const handleCoffeeChange = createNumericHandler('coffee', (value) => value ? `${value}g` : '');
     const handleRatioChange = createNumericHandler('ratio', (value) => value ? `1:${value}` : DEFAULT_METHOD_PARAMS.ratio);
-    const handleTempChange = createNumericHandler('temp', (value) => value ? `${value}°C` : '');
 
     // 处理器具选择
     const handleEquipmentSelect = useCallback(async (equipmentId: string) => {
@@ -865,7 +890,7 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                 grindSize: methodParams.grindSize,
                 temp: methodParams.temp
             },
-            totalTime: initialData.totalTime,
+            totalTime: totalTime, // 使用状态中的totalTime
             // 使用当前选中的咖啡豆ID
             beanId: selectedCoffeeBean?.id,
             // 保留容量调整记录的特殊属性
@@ -1162,160 +1187,332 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                                 )}
                             </div>
                         )}
-                        <div className="grid grid-cols-5 gap-2">
-                            {/* 咖啡量 */}
-                            <div className="relative min-w-0">
-                                <input
-                                    id="coffee-amount"
-                                    name="coffeeAmount"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={numericValues.coffee}
-                                    onChange={(e) => handleCoffeeChange(e.target.value)}
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
-                                    placeholder="15"
-                                />
-                                <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">g</span>
-                            </div>
-                            
-                            {/* 粉水比 */}
-                            <div className="relative min-w-0">
-                                <div className="flex items-center">
-                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mr-0.5 flex-shrink-0">1:</span>
+                        
+                        {/* 手冲器具：5个参数，一行显示 */}
+                        {!isEspressoEquipment && (
+                            <div className="grid grid-cols-5 gap-2">
+                                {/* 咖啡量 */}
+                                <div className="relative min-w-0">
                                     <input
-                                        id="coffee-ratio"
-                                        name="coffeeRatio"
+                                        id="coffee-amount"
+                                        name="coffeeAmount"
                                         type="text"
                                         inputMode="decimal"
-                                        value={numericValues.ratio}
-                                        onChange={(e) => handleRatioChange(e.target.value)}
-                                        className="flex-1 min-w-0 border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
+                                        value={numericValues.coffee}
+                                        onChange={(e) => handleCoffeeChange(e.target.value)}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
                                         placeholder="15"
                                     />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">g</span>
                                 </div>
-                            </div>
-                            
-                            {/* 磨豆机选择器 - 如果是编辑模式、方案有指定磨豆机或用户有多个磨豆机时显示 */}
-                            {settings && (() => {
-                                const isEditingNote = !!initialData.id; // 判断是否在编辑笔记
-                                const { grinderId } = parseGrindSize(methodParams.grindSize);
-                                const hasMethodGrinder = grinderId && grinderId !== 'generic';
-                                const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
-                                return isEditingNote || hasMethodGrinder || hasMultipleGrinders;
-                            })() && (
-                                <div className="min-w-0">
-                                    <Select
-                                        value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}
-                                        onValueChange={async (newGrinderId) => {
-                                            const { grinderId: oldGrinderId, value: currentValue } = parseGrindSize(methodParams.grindSize);
-                                            const oldGrinder = oldGrinderId || 'generic';
-                                            
-                                            // 使用智能转换函数
-                                            const newGrindSizeValue = smartConvertGrindSize(
-                                                currentValue,
-                                                oldGrinder,
-                                                newGrinderId,
-                                                settings?.customGrinders
-                                            );
-
-                                            setMethodParams({
-                                                ...methodParams,
-                                                grindSize: combineGrindSize(newGrinderId, newGrindSizeValue)
-                                            });
-                                            
-                                            // 记录用户的磨豆机选择（用于智能推荐）
-                                            const customEquips = availableEquipments.filter(eq => 'isCustom' in eq && eq.isCustom) as CustomEquipment[];
-                                            await saveLastUsedGrinder(
-                                                selectedEquipment,
-                                                newGrinderId,
-                                                customEquips
-                                            );
-                                        }}
-                                    >
-                                        <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs">
-                                            <SelectValue placeholder="磨豆机" />
-                                        </SelectTrigger>
-                                        <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
-                                            {(() => {
-                                                const myGrinders = getMyGrinders(
-                                                    settings.myGrinders || ['generic'],
+                                
+                                {/* 粉水比 */}
+                                <div className="relative min-w-0">
+                                    <div className="flex items-center">
+                                        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mr-0.5 flex-shrink-0">1:</span>
+                                        <input
+                                            id="coffee-ratio"
+                                            name="coffeeRatio"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={numericValues.ratio}
+                                            onChange={(e) => handleRatioChange(e.target.value)}
+                                            className="flex-1 min-w-0 border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
+                                            placeholder="15"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                {/* 磨豆机选择器 */}
+                                {settings && (() => {
+                                    const isEditingNote = !!initialData.id;
+                                    const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                    const hasMethodGrinder = grinderId && grinderId !== 'generic';
+                                    const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
+                                    return isEditingNote || hasMethodGrinder || hasMultipleGrinders;
+                                })() ? (
+                                    <div className="min-w-0">
+                                        <Select
+                                            value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}
+                                            onValueChange={async (newGrinderId) => {
+                                                const { value: currentValue } = parseGrindSize(methodParams.grindSize);
+                                                const convertedValue = smartConvertGrindSize(
+                                                    currentValue,
+                                                    parseGrindSize(methodParams.grindSize).grinderId || 'generic',
+                                                    newGrinderId,
                                                     settings.customGrinders
                                                 );
-                                                
-                                                // 如果方案有指定磨豆机但不在用户列表中，添加它
-                                                const { grinderId: methodGrinderId } = parseGrindSize(methodParams.grindSize);
-                                                const methodGrinderInMyList = myGrinders.some(g => g.id === methodGrinderId);
-                                                
-                                                if (methodGrinderId && methodGrinderId !== 'generic' && !methodGrinderInMyList) {
-                                                    // 尝试从所有磨豆机中查找（包括已删除的自定义磨豆机）
-                                                    const methodGrinder = findGrinder(methodGrinderId, settings.customGrinders, false);
-                                                    
-                                                    if (methodGrinder) {
-                                                        // 将方案的磨豆机添加到列表末尾
-                                                        return [
-                                                            ...myGrinders.map((grinder) => (
-                                                                <SelectItem key={grinder.id} value={grinder.id}>
-                                                                    {grinder.name}
-                                                                </SelectItem>
-                                                            )),
-                                                            <SelectItem key={methodGrinder.id} value={methodGrinder.id}>
-                                                                {methodGrinder.name}
-                                                            </SelectItem>
-                                                        ];
-                                                    }
+                                                const newGrindSize = combineGrindSize(newGrinderId, convertedValue);
+                                                setMethodParams(prev => ({
+                                                    ...prev,
+                                                    grindSize: newGrindSize
+                                                }));
+                                                if (selectedEquipment) {
+                                                    saveLastUsedGrinder(selectedEquipment, newGrinderId);
                                                 }
-                                                
-                                                return myGrinders.map((grinder) => (
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs">
+                                                <SelectValue>
+                                                    {(() => {
+                                                        const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                                        const currentGrinderId = grinderId || 'generic';
+                                                        if (currentGrinderId === 'generic') return '通用';
+                                                        const grinder = findGrinder(currentGrinderId, settings.customGrinders);
+                                                        return grinder?.name || '未知';
+                                                    })()}
+                                                </SelectValue>
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                                                {getMyGrinders(settings.myGrinders, settings.customGrinders).map((grinder) => (
                                                     <SelectItem key={grinder.id} value={grinder.id}>
                                                         {grinder.name}
                                                     </SelectItem>
-                                                ));
-                                            })()}
-                                        </SelectContent>
-                                    </Select>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ) : null}
+                                
+                                {/* 研磨度值 */}
+                                <div className="min-w-0">
+                                    <input
+                                        id="grind-size"
+                                        name="grindSize"
+                                        type="text"
+                                        value={parseGrindSize(methodParams.grindSize).value}
+                                        onChange={(e) => {
+                                            const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                            setMethodParams({
+                                                ...methodParams,
+                                                grindSize: combineGrindSize(grinderId, e.target.value)
+                                            });
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
+                                        placeholder="中细"
+                                    />
                                 </div>
-                            )}
-                            
-                            {/* 研磨度值 */}
-                            <div className="min-w-0">
-                                <input
-                                    id="grind-size"
-                                    name="grindSize"
-                                    type="text"
-                                    value={parseGrindSize(methodParams.grindSize).value}
-                                    onChange={(e) => {
-                                        const { grinderId } = parseGrindSize(methodParams.grindSize);
-                                        setMethodParams({
-                                            ...methodParams,
-                                            grindSize: combineGrindSize(grinderId, e.target.value)
-                                        });
-                                    }}
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
-                                    placeholder="中细"
-                                />
+                                
+                                {/* 水温 */}
+                                <div className="relative min-w-0">
+                                    <input
+                                        id="water-temperature"
+                                        name="waterTemperature"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={numericValues.temp}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            const regex = /^$|^[0-9]*\.?[0-9]*$/;
+                                            if (regex.test(value)) {
+                                                setNumericValues(prev => ({ ...prev, temp: value }));
+                                                setMethodParams(prev => ({
+                                                    ...prev,
+                                                    temp: value ? `${value}°C` : '0°C'
+                                                }));
+                                            }
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-6"
+                                        placeholder="92"
+                                    />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">°C</span>
+                                </div>
                             </div>
-                            
-                            {/* 水温 */}
-                            <div className="relative min-w-0">
-                                <input
-                                    id="water-temperature"
-                                    name="waterTemperature"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={numericValues.temp}
-                                    onChange={(e) => handleTempChange(e.target.value)}
-                                    className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-6"
-                                    placeholder="92"
-                                />
-                                <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">°C</span>
+                        )}
+                        
+                        {/* 意式器具：6个参数，3x2网格显示 */}
+                        {isEspressoEquipment && (
+                            <div className="grid grid-cols-3 gap-2">
+                                {/* 第一行：咖啡量、萃取时间、水量 */}
+                                <div className="relative min-w-0">
+                                    <input
+                                        id="coffee-amount"
+                                        name="coffeeAmount"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={numericValues.coffee}
+                                        onChange={(e) => handleCoffeeChange(e.target.value)}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
+                                        placeholder="15"
+                                    />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">g</span>
+                                </div>
+                                
+                                {/* 萃取时间 */}
+                                <div className="relative min-w-0">
+                                    <input
+                                        id="total-time"
+                                        name="totalTime"
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={totalTime > 0 ? String(totalTime) : ''}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            const regex = /^$|^[0-9]*$/;
+                                            if (regex.test(value)) {
+                                                const timeValue = value === '' ? 0 : parseInt(value, 10);
+                                                setTotalTime(timeValue);
+                                            }
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
+                                        placeholder="25"
+                                    />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">s</span>
+                                </div>
+                                
+                                {/* 水量 */}
+                                <div className="relative min-w-0">
+                                    <input
+                                        id="water-amount"
+                                        name="waterAmount"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={numericValues.water}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            const regex = /^$|^[0-9]*\.?[0-9]*$/;
+                                            if (regex.test(value)) {
+                                                setNumericValues(prev => ({ ...prev, water: value }));
+                                                setMethodParams(prev => ({
+                                                    ...prev,
+                                                    water: value ? `${value}g` : '0g'
+                                                }));
+                                            }
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-3"
+                                        placeholder="36"
+                                    />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">g</span>
+                                </div>
+                                
+                                {/* 第二行：磨豆机、研磨度、水温 */}
+                                {/* 磨豆机选择器 */}
+                                {settings && (() => {
+                                    const isEditingNote = !!initialData.id;
+                                    const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                    const hasMethodGrinder = grinderId && grinderId !== 'generic';
+                                    const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
+                                    return isEditingNote || hasMethodGrinder || hasMultipleGrinders;
+                                })() ? (
+                                    <div className="min-w-0">
+                                        <Select
+                                            value={parseGrindSize(methodParams.grindSize).grinderId || 'generic'}
+                                            onValueChange={async (newGrinderId) => {
+                                                const { grinderId: oldGrinderId, value: currentValue } = parseGrindSize(methodParams.grindSize);
+                                                const oldGrinder = oldGrinderId || 'generic';
+                                                
+                                                const newGrindSizeValue = smartConvertGrindSize(
+                                                    currentValue,
+                                                    oldGrinder,
+                                                    newGrinderId,
+                                                    settings?.customGrinders
+                                                );
+
+                                                setMethodParams({
+                                                    ...methodParams,
+                                                    grindSize: combineGrindSize(newGrinderId, newGrindSizeValue)
+                                                });
+                                                
+                                                const customEquips = availableEquipments.filter(eq => 'isCustom' in eq && eq.isCustom) as CustomEquipment[];
+                                                await saveLastUsedGrinder(
+                                                    selectedEquipment,
+                                                    newGrinderId,
+                                                    customEquips
+                                                );
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full py-2 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs">
+                                                <SelectValue placeholder="磨豆机" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                                                {(() => {
+                                                    const myGrinders = getMyGrinders(
+                                                        settings.myGrinders || ['generic'],
+                                                        settings.customGrinders
+                                                    );
+                                                    
+                                                    const { grinderId: methodGrinderId } = parseGrindSize(methodParams.grindSize);
+                                                    const methodGrinderInMyList = myGrinders.some(g => g.id === methodGrinderId);
+                                                    
+                                                    if (methodGrinderId && methodGrinderId !== 'generic' && !methodGrinderInMyList) {
+                                                        const methodGrinder = findGrinder(methodGrinderId, settings.customGrinders, false);
+                                                        
+                                                        if (methodGrinder) {
+                                                            return [
+                                                                ...myGrinders.map((grinder) => (
+                                                                    <SelectItem key={grinder.id} value={grinder.id}>
+                                                                        {grinder.name}
+                                                                    </SelectItem>
+                                                                )),
+                                                                <SelectItem key={methodGrinder.id} value={methodGrinder.id}>
+                                                                    {methodGrinder.name}
+                                                                </SelectItem>
+                                                            ];
+                                                        }
+                                                    }
+                                                    
+                                                    return myGrinders.map((grinder) => (
+                                                        <SelectItem key={grinder.id} value={grinder.id}>
+                                                            {grinder.name}
+                                                        </SelectItem>
+                                                    ));
+                                                })()}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ) : null}
+                                
+                                {/* 研磨度 */}
+                                <div className="min-w-0">
+                                    <input
+                                        id="grind-size"
+                                        name="grindSize"
+                                        type="text"
+                                        value={parseGrindSize(methodParams.grindSize).value}
+                                        onChange={(e) => {
+                                            const { grinderId } = parseGrindSize(methodParams.grindSize);
+                                            setMethodParams({
+                                                ...methodParams,
+                                                grindSize: combineGrindSize(grinderId, e.target.value)
+                                            });
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none"
+                                        placeholder="意式"
+                                    />
+                                </div>
+                                
+                                {/* 水温 */}
+                                <div className="relative min-w-0">
+                                    <input
+                                        id="water-temperature"
+                                        name="waterTemperature"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={numericValues.temp}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            const regex = /^$|^[0-9]*\.?[0-9]*$/;
+                                            if (regex.test(value)) {
+                                                setNumericValues(prev => ({ ...prev, temp: value }));
+                                                setMethodParams(prev => ({
+                                                    ...prev,
+                                                    temp: value ? `${value}°C` : '0°C'
+                                                }));
+                                            }
+                                        }}
+                                        className="w-full border-b border-neutral-200 bg-transparent py-2 text-xs outline-hidden transition-colors focus:border-neutral-400 dark:border-neutral-800 dark:focus:border-neutral-600 placeholder:text-neutral-300 dark:placeholder:text-neutral-600 text-neutral-800 dark:text-neutral-300 rounded-none pr-6"
+                                        placeholder="93"
+                                    />
+                                    <span className="absolute right-0 bottom-2 text-[10px] text-neutral-400 dark:text-neutral-500 pointer-events-none">°C</span>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 )}
-
+                        
                 {/* 风味评分 */}
                 <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                         <div className="text-xs font-medium  tracking-widest text-neutral-500 dark:text-neutral-400">
                             风味评分
                         </div>

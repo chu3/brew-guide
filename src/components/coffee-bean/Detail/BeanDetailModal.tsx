@@ -5,7 +5,7 @@ import Image from 'next/image'
 import dynamic from 'next/dynamic'
 
 import { CoffeeBean } from '@/types/app'
-import { BrewingNote } from '@/lib/core/config'
+import { BrewingNote, CustomEquipment } from '@/lib/core/config'
 import { parseDateToTimestamp } from '@/lib/utils/dateUtils'
 import { calculateFlavorInfo } from '@/lib/utils/flavorPeriodUtils'
 import HighlightText from '@/components/common/ui/HighlightText'
@@ -16,6 +16,7 @@ import { ArrowRight } from 'lucide-react'
 import { BREWING_EVENTS } from '@/lib/brewing/constants'
 import { useFlavorDimensions } from '@/lib/hooks/useFlavorDimensions'
 import { useCoffeeBeanStore } from '@/lib/stores/coffeeBeanStore'
+import { loadCustomEquipments } from '@/lib/managers/customEquipments'
 
 // 动态导入 ImageViewer 组件
 const ImageViewer = dynamic(() => import('@/components/common/ui/ImageViewer'), {
@@ -102,6 +103,7 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
     const [imageError, setImageError] = useState(false)
     const [relatedNotes, setRelatedNotes] = useState<BrewingNote[]>([])
     const [equipmentNames, setEquipmentNames] = useState<Record<string, string>>({})
+    const [customEquipments, setCustomEquipments] = useState<CustomEquipment[]>([])
     // 图片查看器状态
     const [imageViewerOpen, setImageViewerOpen] = useState(false)
     const [currentImageUrl, setCurrentImageUrl] = useState('')
@@ -435,16 +437,44 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
         )
     }
 
+    // 检测是否是意式器具
+    const checkIsEspressoEquipment = (equipmentId: string | undefined): boolean => {
+        if (!equipmentId) return false;
+        
+        // 检查是否是系统预设的意式机
+        if (equipmentId === 'Espresso') return true;
+        
+        // 检查自定义器具
+        const customEquipment = customEquipments.find(eq => eq.id === equipmentId);
+        if (customEquipment && customEquipment.animationType === 'espresso') return true;
+        
+        return false;
+    };
+
+    // 格式化时间显示（秒转为可读格式）
+    const formatTimeDisplay = (seconds: number): string => {
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return remainingSeconds > 0 ? `${minutes}m${remainingSeconds}s` : `${minutes}m`;
+    };
+
     // 获取相关的冲煮记录
     useEffect(() => {
         const loadRelatedNotes = async () => {
             if (!bean?.id || !isOpen) {
                 setRelatedNotes([])
+                setCustomEquipments([])
                 return
             }
 
             try {
                 const { Storage } = await import('@/lib/core/storage');
+                
+                // 加载自定义器具
+                const customEquips = await loadCustomEquipments();
+                setCustomEquipments(customEquips);
+                
                 const notesStr = await Storage.get('brewingNotes')
                 if (!notesStr) {
                     setRelatedNotes([])
@@ -488,6 +518,7 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
             } catch (error) {
                 console.error('加载冲煮记录失败:', error)
                 setRelatedNotes([])
+                setCustomEquipments([])
             }
         }
 
@@ -965,25 +996,46 @@ const BeanDetailModal: React.FC<BeanDetailModalProps> = ({
                                                                         </div>
 
                                                                         {/* 方案信息 - 只在有方案时显示 */}
-                                                                        {note.params && note.method && note.method.trim() !== '' && (
-                                                                            <div className="text-xs font-medium mt-1.5 tracking-wide text-neutral-600 dark:text-neutral-400 space-x-1 leading-relaxed">
-                                                                                {bean?.name && (
-                                                                                    <>
-                                                                                        <span>{note.equipment ? (equipmentNames[note.equipment] || note.equipment) : '未知器具'}</span>
-                                                                                        <span>·</span>
-                                                                                    </>
-                                                                                )}
-                                                                                <span>{note.params.coffee}</span>
-                                                                                <span>·</span>
-                                                                                <span>{note.params.ratio}</span>
-                                                                                {(note.params.grindSize || note.params.temp) && (
-                                                                                    <>
-                                                                                        <span>·</span>
-                                                                                        <span>{[note.params.grindSize, note.params.temp].filter(Boolean).join(' · ')}</span>
-                                                                                    </>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
+                                                                        {note.params && note.method && note.method.trim() !== '' && (() => {
+                                                                            const isEspresso = checkIsEspressoEquipment(note.equipment);
+                                                                            
+                                                                            return (
+                                                                                <div className="text-xs font-medium mt-1.5 tracking-wide text-neutral-600 dark:text-neutral-400 space-x-1 leading-relaxed">
+                                                                                    {bean?.name && (
+                                                                                        <>
+                                                                                            <span>{note.equipment ? (equipmentNames[note.equipment] || note.equipment) : '未知器具'}</span>
+                                                                                            <span>·</span>
+                                                                                        </>
+                                                                                    )}
+                                                                                    <span>{note.params.coffee}</span>
+                                                                                    <span>·</span>
+                                                                                    
+                                                                                    {/* 根据器具类型显示不同参数 */}
+                                                                                    {isEspresso ? (
+                                                                                        /* 意式器具：显示萃取时间和水量 */
+                                                                                        <>
+                                                                                            {note.totalTime && note.totalTime > 0 && (
+                                                                                                <>
+                                                                                                    <span>{formatTimeDisplay(note.totalTime)}</span>
+                                                                                                    <span>·</span>
+                                                                                                </>
+                                                                                            )}
+                                                                                            <span>{note.params.water}</span>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        /* 手冲器具：显示水粉比 */
+                                                                                        <span>{note.params.ratio}</span>
+                                                                                    )}
+                                                                                    
+                                                                                    {(note.params.grindSize || note.params.temp) && (
+                                                                                        <>
+                                                                                            <span>·</span>
+                                                                                            <span>{[note.params.grindSize, note.params.temp].filter(Boolean).join(' · ')}</span>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 </div>
                                                             </div>

@@ -21,6 +21,7 @@ export interface EditableParams {
 	ratio: string;
 	grindSize: string;
 	temp: string;
+	extractionTime?: string; // 意式器具专用：萃取时间
 }
 
 // 提取数字工具函数
@@ -176,6 +177,36 @@ export function useBrewingParameters() {
 							...currentBrewingMethod.params,
 							coffee: `${parsedValue}g`,
 							water: `${calculatedWater}g`,
+							stages: updatedStages,
+						},
+					};
+					setCurrentBrewingMethod(updatedMethod);
+					break;
+				}
+				case "water": {
+					// 意式机专用：直接更新水量（液重）
+					newParams = {
+						...editableParams,
+						water: `${parsedValue}g`,
+					};
+					// 找到萃取步骤并更新其液重
+					const updatedStages = selectedMethod.params.stages.map(
+						(stage) => {
+							if (stage.pourType === 'extraction') {
+								return {
+									...stage,
+									water: `${parsedValue}g`,
+								};
+							}
+							return stage;
+						}
+					);
+					updateBrewingSteps(updatedStages);
+					const updatedMethod = {
+						...currentBrewingMethod,
+						params: {
+							...currentBrewingMethod.params,
+							water: `${parsedValue}g`,
 							stages: updatedStages,
 						},
 					};

@@ -32,12 +32,37 @@ const NoteItem: React.FC<NoteItemProps> = ({
     // 添加用户设置状态
     const [_settings, setSettings] = useState<SettingsOptions>(defaultSettings);
     const [_grinderName, setGrinderName] = useState<string>("");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [customEquipments, setCustomEquipments] = useState<any[]>([]);
     // 图片查看器状态和错误状态
     const [imageViewerOpen, setImageViewerOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
 
     // 使用风味维度hook
     const { getValidTasteRatings } = useFlavorDimensions();
+
+    // 判断是否是意式器具
+    const isEspressoEquipment = React.useMemo(() => {
+        if (!note.equipment) return false;
+        
+        // 检查是否是系统预设的意式机
+        if (note.equipment === 'Espresso') return true;
+        
+        // 检查自定义器具
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const customEquipment = customEquipments.find((eq: any) => eq.id === note.equipment);
+        if (customEquipment && customEquipment.animationType === 'espresso') return true;
+        
+        return false;
+    }, [note.equipment, customEquipments]);
+    
+    // 格式化时间显示（秒转为可读格式）
+    const formatTimeDisplay = (seconds: number): string => {
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return remainingSeconds > 0 ? `${minutes}m${remainingSeconds}s` : `${minutes}m`;
+    };
 
     // 预先计算一些条件，避免在JSX中重复计算
     const validTasteRatings = getValidTasteRatings(note.taste);
@@ -47,7 +72,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
     const beanName = note.coffeeBeanInfo?.name;
     const beanUnitPrice = beanName ? (unitPriceCache[beanName] || 0) : 0;
 
-    // 获取用户设置
+    // 获取用户设置和自定义器具
     useEffect(() => {
         const loadSettings = async () => {
             try {
@@ -64,6 +89,13 @@ const NoteItem: React.FC<NoteItemProps> = ({
                             setGrinderName(grinder.name);
                         }
                     }
+                }
+                
+                // 加载自定义器具
+                const customEquipmentsStr = await Storage.get('customEquipments');
+                if (customEquipmentsStr) {
+                    const parsedEquipments = JSON.parse(customEquipmentsStr);
+                    setCustomEquipments(parsedEquipments);
                 }
             } catch (error) {
                 console.error('加载用户设置失败', error);
@@ -192,7 +224,23 @@ const NoteItem: React.FC<NoteItemProps> = ({
                                             )}
                                         </span>
                                         <span>·</span>
-                                        <span>{note.params.ratio}</span>
+                                        
+                                        {/* 根据器具类型显示不同参数 */}
+                                        {isEspressoEquipment ? (
+                                            /* 意式器具：显示萃取时间和水量 */
+                                            <>
+                                                {note.totalTime > 0 && (
+                                                    <>
+                                                        <span>{formatTimeDisplay(note.totalTime)}</span>
+                                                        <span>·</span>
+                                                    </>
+                                                )}
+                                                <span>{note.params.water}</span>
+                                            </>
+                                        ) : (
+                                            /* 手冲器具：显示水粉比 */
+                                            <span>{note.params.ratio}</span>
+                                        )}
 
                                         {/* 合并显示研磨度和水温 */}
                                         {(note.params.grindSize || note.params.temp) && (

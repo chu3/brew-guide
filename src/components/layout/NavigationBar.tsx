@@ -27,6 +27,7 @@ import { saveMainTabPreference } from '@/lib/navigation/navigationCache'
 import { ViewOption, VIEW_LABELS } from '@/components/coffee-bean/List/types'
 import EquipmentBar from '@/components/equipment/EquipmentBar'
 import EquipmentManagementDrawer from '@/components/equipment/EquipmentManagementDrawer'
+import { isEspressoMachine } from '@/lib/utils/equipmentUtils'
 
 // ==================== Types & Interfaces ====================
 type MainTabType = '冲煮' | '咖啡豆' | '笔记'
@@ -38,6 +39,7 @@ interface EditableParams {
     ratio: string
     grindSize: string
     temp: string
+    extractionTime?: string  // 意式器具专用：萃取时间
 }
 
 interface TabButtonProps {
@@ -87,9 +89,10 @@ interface NavigationBarProps {
             temp: string;
             stages: Array<{
                 label: string;
-                time: number;
+                time?: number;
                 water: string;
                 detail: string;
+                pourType?: string;
             }>;
         };
     } | null;
@@ -119,6 +122,31 @@ const canGoBack = (activeBrewingStep: BrewingStep, activeMainTab: MainTabType, h
     if (activeBrewingStep === 'coffeeBean') return false
     if (activeBrewingStep === 'method' && !hasCoffeeBeans) return false
     return true
+}
+
+// 检查是否是意式器具
+const checkIsEspressoEquipment = (
+    selectedEquipment: string | null,
+    customEquipments: CustomEquipment[]
+): boolean => {
+    if (!selectedEquipment) return false
+    
+    // 检查是否是系统预设的意式机
+    if (selectedEquipment === 'Espresso') return true
+    
+    // 检查自定义器具
+    const customEquipment = customEquipments.find(eq => eq.id === selectedEquipment)
+    if (customEquipment && isEspressoMachine(customEquipment)) return true
+    
+    return false
+}
+
+// 格式化时间显示（秒转为可读格式）
+const formatTimeDisplay = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return remainingSeconds > 0 ? `${minutes}m${remainingSeconds}s` : `${minutes}m`
 }
 
 // ==================== Sub-components ====================
@@ -466,12 +494,26 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
     const shouldHideHeader = activeBrewingStep === 'brewing' && isTimerRunning && !showComplete
     const shouldShowContent = activeMainTab === '冲煮' && (!isTimerRunning || showComplete || activeBrewingStep === 'notes')
     const shouldShowParams = parameterInfo.method
+    const isEspressoEquipment = checkIsEspressoEquipment(selectedEquipment, customEquipments)
     
     // ========== Helper Functions ==========
     const getCurrentViewLabel = () => currentBeanView ? VIEW_LABELS[currentBeanView] : '咖啡豆'
     
     const getSelectedEquipmentName = () => 
         selectedEquipment ? getEquipmentName(selectedEquipment, equipmentList, customEquipments) : null
+    
+    // 获取萃取时间（从方案的stages中提取）
+    const getExtractionTime = () => {
+        if (!selectedMethod || !isEspressoEquipment) return null
+        const extractionStage = selectedMethod.params.stages?.find(stage => stage.pourType === 'extraction')
+        return extractionStage?.time ?? null
+    }
+    
+    // 获取格式化的萃取时间显示
+    const getExtractionTimeDisplay = () => {
+        const time = getExtractionTime()
+        return time ? formatTimeDisplay(time) : null
+    }
     
     // ========== Event Handlers ==========
     const handleToggleManagementDrawer = () => {
@@ -560,7 +602,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
             
             setDisplayOverlay(currentOverlay => {
                 const getCurrentValue = (key: keyof EditableParams) => 
-                    currentOverlay?.[key] || editableParams[key]
+                    currentOverlay?.[key] || editableParams[key] || ''
                 
                 const currentCoffee = parseFloat(getCurrentValue('coffee').replace('g', ''))
                 const currentRatio = parseFloat(getCurrentValue('ratio').split(':')[1])
@@ -570,10 +612,29 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                         const coffeeValue = parseFloat(value)
                         if (isNaN(coffeeValue) || coffeeValue <= 0) return currentOverlay
                         
+                        // 对于意式机，更新咖啡量不影响水量（水量是液重，独立设置）
+                        if (isEspressoEquipment) {
+                            return {
+                                ...currentOverlay,
+                                coffee: `${coffeeValue}g`
+                            }
+                        }
+                        
+                        // 对于手冲，更新咖啡量会根据水粉比计算水量
                         return {
                             ...currentOverlay,
                             coffee: `${coffeeValue}g`,
                             water: `${Math.round(coffeeValue * currentRatio)}g`
+                        }
+                    }
+                    case 'water': {
+                        // 意式机专用：直接更新水量（液重）
+                        const waterValue = parseFloat(value)
+                        if (isNaN(waterValue) || waterValue <= 0) return currentOverlay
+                        
+                        return {
+                            ...currentOverlay,
+                            water: `${waterValue}g`
                         }
                     }
                     case 'ratio': {
@@ -585,6 +646,10 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                             ratio: `1:${ratioValue}`,
                             water: `${Math.round(currentCoffee * ratioValue)}g`
                         }
+                    }
+                    case 'extractionTime': {
+                        // 意式机专用：萃取时间
+                        return { ...currentOverlay, extractionTime: value }
                     }
                     case 'grindSize':
                         return { ...currentOverlay, grindSize: value }
@@ -603,7 +668,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         return () => {
             window.removeEventListener('brewing:updateNavbarDisplay', handleNavbarDisplayUpdate as EventListener)
         }
-    }, [activeBrewingStep, editableParams])
+    }, [activeBrewingStep, editableParams, isEspressoEquipment])
 
     // ========== Render ==========
 
@@ -809,34 +874,88 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                     <div className="flex items-center flex-shrink-0">
                                                         {editableParams ? (
                                                             <div className="flex items-center space-x-1 sm:space-x-2">
+                                                                {/* 咖啡克重 - 所有器具都显示 */}
                                                                 <EditableParameter
                                                                     value={(displayOverlay?.coffee || editableParams.coffee).replace('g', '')}
                                                                     onChange={(v) => handleParamChange('coffee', v)}
                                                                     unit="g"
                                                                 />
                                                                 <span className="shrink-0">·</span>
-                                                                <EditableParameter
-                                                                    value={(displayOverlay?.ratio || editableParams.ratio).replace('1:', '')}
-                                                                    onChange={(v) => handleParamChange('ratio', v)}
-                                                                    unit=""
-                                                                    prefix="1:"
-                                                                />
-                                                                <span className="shrink-0">·</span>
-                                                                <EditableGrindSize
-                                                                    grindSize={displayOverlay?.grindSize || editableParams.grindSize}
-                                                                    onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
-                                                                    settings={settings}
-                                                                    selectedEquipment={selectedEquipment}
-                                                                    customEquipments={customEquipments}
-                                                                />
-                                                                {parameterInfo.params?.temp && (
+                                                                
+                                                                {isEspressoEquipment ? (
+                                                                    /* 意式器具：萃取时间、水量、研磨度、水温 */
                                                                     <>
-                                                                        <span className="shrink-0">·</span>
+                                                                        {/* 萃取时间 */}
+                                                                        {getExtractionTime() !== null && (
+                                                                            <>
+                                                                                <EditableParameter
+                                                                                    value={String(getExtractionTime())}
+                                                                                    onChange={(v) => {
+                                                                                        const timeValue = parseFloat(v)
+                                                                                        if (!isNaN(timeValue) && timeValue > 0 && _handleExtractionTimeChange) {
+                                                                                            _handleExtractionTimeChange(timeValue)
+                                                                                        }
+                                                                                    }}
+                                                                                    unit="s"
+                                                                                    disabled={false}
+                                                                                />
+                                                                                <span className="shrink-0">·</span>
+                                                                            </>
+                                                                        )}
+                                                                        {/* 水量 */}
                                                                         <EditableParameter
-                                                                            value={(displayOverlay?.temp || editableParams.temp).replace('°C', '')}
-                                                                            onChange={(v) => handleParamChange('temp', v)}
-                                                                            unit="°C"
+                                                                            value={(displayOverlay?.water || editableParams.water).replace('g', '')}
+                                                                            onChange={(v) => handleParamChange('water', v)}
+                                                                            unit="g"
                                                                         />
+                                                                        <span className="shrink-0">·</span>
+                                                                        {/* 研磨度 */}
+                                                                        <EditableGrindSize
+                                                                            grindSize={displayOverlay?.grindSize || editableParams.grindSize}
+                                                                            onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
+                                                                            settings={settings}
+                                                                            selectedEquipment={selectedEquipment}
+                                                                            customEquipments={customEquipments}
+                                                                        />
+                                                                        {/* 水温 */}
+                                                                        {parameterInfo.params?.temp && (
+                                                                            <>
+                                                                                <span className="shrink-0">·</span>
+                                                                                <EditableParameter
+                                                                                    value={(displayOverlay?.temp || editableParams.temp).replace('°C', '')}
+                                                                                    onChange={(v) => handleParamChange('temp', v)}
+                                                                                    unit="°C"
+                                                                                />
+                                                                            </>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    /* 手冲器具：水粉比、研磨度、水温 */
+                                                                    <>
+                                                                        <EditableParameter
+                                                                            value={(displayOverlay?.ratio || editableParams.ratio).replace('1:', '')}
+                                                                            onChange={(v) => handleParamChange('ratio', v)}
+                                                                            unit=""
+                                                                            prefix="1:"
+                                                                        />
+                                                                        <span className="shrink-0">·</span>
+                                                                        <EditableGrindSize
+                                                                            grindSize={displayOverlay?.grindSize || editableParams.grindSize}
+                                                                            onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
+                                                                            settings={settings}
+                                                                            selectedEquipment={selectedEquipment}
+                                                                            customEquipments={customEquipments}
+                                                                        />
+                                                                        {parameterInfo.params?.temp && (
+                                                                            <>
+                                                                                <span className="shrink-0">·</span>
+                                                                                <EditableParameter
+                                                                                    value={(displayOverlay?.temp || editableParams.temp).replace('°C', '')}
+                                                                                    onChange={(v) => handleParamChange('temp', v)}
+                                                                                    unit="°C"
+                                                                                />
+                                                                            </>
+                                                                        )}
                                                                     </>
                                                                 )}
                                                             </div>
@@ -850,20 +969,44 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                             water: parameterInfo.params.water || '',
                                                                             ratio: parameterInfo.params.ratio || '',
                                                                             grindSize: parameterInfo.params.grindSize || '',
-                                                                            temp: parameterInfo.params.temp || '',
+                                                                            temp: parameterInfo.params.temp || ''
                                                                         })
                                                                     }
                                                                 }}
                                                             >
+                                                                {/* 咖啡克重 - 所有器具都显示 */}
                                                                 <span className="whitespace-nowrap">{parameterInfo.params.coffee}</span>
                                                                 <span className="shrink-0">·</span>
-                                                                <span className="whitespace-nowrap">{parameterInfo.params.ratio}</span>
-                                                                <span className="shrink-0">·</span>
-                                                                <span className="whitespace-nowrap">
-                                                                    {formatGrindSize(parameterInfo.params.grindSize || "", settings.grindType, settings.customGrinders)}
-                                                                </span>
-                                                                <span className="shrink-0">·</span>
-                                                                <span className="whitespace-nowrap">{parameterInfo.params.temp}</span>
+                                                                
+                                                                {isEspressoEquipment ? (
+                                                                    /* 意式器具：萃取时间、水量、研磨度、水温 */
+                                                                    <>
+                                                                        {getExtractionTimeDisplay() && (
+                                                                            <>
+                                                                                <span className="whitespace-nowrap">{getExtractionTimeDisplay()}</span>
+                                                                                <span className="shrink-0">·</span>
+                                                                            </>
+                                                                        )}
+                                                                        <span className="whitespace-nowrap">{parameterInfo.params.water}</span>
+                                                                        <span className="shrink-0">·</span>
+                                                                        <span className="whitespace-nowrap">
+                                                                            {formatGrindSize(parameterInfo.params.grindSize || "", settings.grindType, settings.customGrinders)}
+                                                                        </span>
+                                                                        <span className="shrink-0">·</span>
+                                                                        <span className="whitespace-nowrap">{parameterInfo.params.temp}</span>
+                                                                    </>
+                                                                ) : (
+                                                                    /* 手冲器具：水粉比、研磨度、水温 */
+                                                                    <>
+                                                                        <span className="whitespace-nowrap">{parameterInfo.params.ratio}</span>
+                                                                        <span className="shrink-0">·</span>
+                                                                        <span className="whitespace-nowrap">
+                                                                            {formatGrindSize(parameterInfo.params.grindSize || "", settings.grindType, settings.customGrinders)}
+                                                                        </span>
+                                                                        <span className="shrink-0">·</span>
+                                                                        <span className="whitespace-nowrap">{parameterInfo.params.temp}</span>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>

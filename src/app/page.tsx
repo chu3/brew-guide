@@ -2003,9 +2003,10 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                         temp: currentBrewingMethod.params.temp,
                         stages: currentBrewingMethod.params.stages.map(stage => ({
                             label: stage.label,
-                            time: stage.time || 0,
+                            time: stage.time,
                             water: stage.water,
-                            detail: stage.detail
+                            detail: stage.detail,
+                            pourType: stage.pourType
                         }))
                     }
                 } : null}

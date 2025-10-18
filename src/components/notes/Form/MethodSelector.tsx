@@ -33,13 +33,30 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   const lastUsedGrinderByEquipment = useGrinderRecommendationStore(
     state => state.lastUsedGrinderByEquipment
   );
-  
+
+  // 判断是否是意式器具
+  const isEspressoEquipment = React.useMemo(() => {
+    if (!selectedEquipment) return false;
+    
+    // 检查是否是系统预设的意式机
+    if (selectedEquipment === 'Espresso') return true;
+    
+    // 检查自定义器具
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const customEquipment = customEquipments?.find((eq: any) => eq.id === selectedEquipment);
+    if (customEquipment && customEquipment.animationType === 'espresso') return true;
+    
+    return false;
+  }, [selectedEquipment, customEquipments]);
+
   // 本地状态管理参数
   const [coffeeAmount, setCoffeeAmount] = useState<string>('15')
   const [ratioAmount, setRatioAmount] = useState<string>('15')
   const [waterAmount, setWaterAmount] = useState<string>('225g')
   const [grindSize, setGrindSize] = useState<string>('中细')
-  
+  const [totalTime, setTotalTime] = useState<number>(0) // 总时长（秒）
+  const [tempValue, setTempValue] = useState<string>('92') // 水温
+
   // 使用智能推荐获取默认磨豆机（使用最新的 Zustand 状态）
   const getInitialGrinderId = () => {
     if (!settings) return 'generic'
@@ -50,9 +67,25 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
       customEquipments
     )
   }
-  
+
   const [selectedGrinderId, setSelectedGrinderId] = useState<string>(getInitialGrinderId())
-  const [_tempValue, setTempValue] = useState<string>('92')
+
+  // 格式化时间显示（秒 -> 字符串）
+  const formatTimeDisplay = (seconds: number): string => {
+    if (seconds < 60) {
+      return `${seconds}s`
+    }
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return remainingSeconds > 0 ? `${minutes}m${remainingSeconds}s` : `${minutes}m`
+  }
+
+  // 计算方案的总时长
+  const calculateTotalTime = (method: Method): number => {
+    if (!method.params.stages || method.params.stages.length === 0) return 0
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return method.params.stages.reduce((total: number, stage: any) => total + (stage.time || 0), 0)
+  }
 
   // 处理咖啡粉量变化
   const handleCoffeeAmountChange = (value: string, method: Method) => {
@@ -153,6 +186,49 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
     onParamsChange(method)
   }
 
+  // 处理总时长变化（只对意式器具有效）
+  const handleTotalTimeChange = (value: string, method: Method) => {
+    const regex = /^$|^[0-9]*$/;
+    if (regex.test(value)) {
+      const timeValue = value === '' ? 0 : parseInt(value, 10)
+      setTotalTime(timeValue)
+
+      // 确保方案有 stages 数组
+      if (!method.params.stages) {
+        method.params.stages = []
+      }
+
+      // 如果方案有 stages，更新第一个阶段的时间
+      if (method.params.stages.length > 0) {
+        method.params.stages[0].time = timeValue
+      } else {
+        // 如果没有 stages，创建一个萃取阶段
+        method.params.stages.push({
+          time: timeValue,
+          label: '萃取',
+          water: method.params.water,
+          detail: '意式萃取',
+          pourType: 'extraction'
+        })
+      }
+
+      // 通知父组件参数已更改
+      onParamsChange(method)
+    }
+  }
+
+  // 处理水温变化
+  const handleTempChange = (value: string, method: Method) => {
+    const regex = /^$|^[0-9]*\.?[0-9]*$/;
+    if (regex.test(value)) {
+      setTempValue(value)
+      method.params.temp = value ? `${value}°C` : '0°C'
+
+      // 通知父组件参数已更改
+      onParamsChange(method)
+    }
+  }
+
   // 处理磨豆机切换
   const handleGrinderChange = async (newGrinderId: string, method: Method) => {
     const oldGrinderId = selectedGrinderId
@@ -165,7 +241,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
       newGrinderId,
       settings?.customGrinders
     )
-    
+
     // 更新显示的研磨度值
     setGrindSize(newGrindSizeValue)
 
@@ -173,7 +249,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
     // 如果切换到特定磨豆机，也不保存ID，只保存值（让推荐系统决定）
     // 这样所有方案都会跟随器具的推荐磨豆机
     let grindSizeToSave: string
-    
+
     if (newGrinderId === 'generic') {
       // 切换到通用：将刻度转换为通用描述
       const genericDescription = smartConvertGrindSize(
@@ -194,16 +270,16 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
       )
       grindSizeToSave = genericDescription
     }
-    
+
     method.params.grindSize = grindSizeToSave
-    
+
     // 🎯 关键：先记录用户的磨豆机选择（这样推荐系统会用它）
     await saveLastUsedGrinder(
       selectedEquipment || null,
       newGrinderId,
       customEquipments
     )
-    
+
     // 🎯 然后通知父组件参数已更改
     onParamsChange(method)
   }
@@ -222,7 +298,7 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         lastUsedGrinderByEquipment,
         customEquipments
       )
-      
+
       // 如果推荐的磨豆机与当前不同，需要转化研磨度
       if (recommendedGrinderId !== selectedGrinderId) {
         const newGrindSizeValue = smartConvertGrindSize(
@@ -253,10 +329,15 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
         setCoffeeAmount(coffee)
         setRatioAmount(ratio)
         setWaterAmount(method.params.water)
-        
+        setTempValue(temp)
+
+        // 计算总时长
+        const methodTotalTime = calculateTotalTime(method)
+        setTotalTime(methodTotalTime)
+
         // 解析研磨度，提取磨豆机ID和值
         const { grinderId, value } = parseGrindSize(method.params.grindSize)
-        
+
         // 使用智能推荐获取默认磨豆机（如果研磨度没有携带磨豆机ID）
         const recommendedGrinderId = settings ? getRecommendedGrinder(
           selectedEquipment || null,
@@ -264,10 +345,10 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
           lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
           customEquipments
         ) : 'generic'
-        
+
         const actualGrinderId = grinderId || recommendedGrinderId
         setSelectedGrinderId(actualGrinderId)
-        
+
         // 如果使用了推荐的磨豆机（即方案本身没有携带磨豆机ID），需要转化研磨度
         let finalGrindSize = value
         if (!grinderId && actualGrinderId !== 'generic') {
@@ -279,11 +360,9 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
             settings?.customGrinders
           )
         }
-        
+
         // 设置研磨度值
         setGrindSize(finalGrindSize)
-        
-        setTempValue(temp)
       }
     }
   }, [selectedMethod, customMethods, commonMethods, settings, selectedEquipment, customEquipments, lastUsedGrinderByEquipment])
@@ -308,15 +387,15 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
   // 获取方案显示的研磨度（使用智能推荐的磨豆机）
   const getDisplayGrindSize = (method: Method): string => {
     if (!settings) return method.params.grindSize;
-    
+
     // 解析方案的研磨度
     const { grinderId, value } = parseGrindSize(method.params.grindSize);
-    
+
     // 如果方案已经携带了磨豆机ID，直接使用
     if (grinderId && grinderId !== 'generic') {
       return formatGrindSize(method.params.grindSize, settings.grindType, settings.customGrinders, { showGrinderName: true });
     }
-    
+
     // 否则，使用智能推荐的磨豆机（使用最新的 Zustand 状态）
     const recommendedGrinderId = getRecommendedGrinder(
       selectedEquipment || null,
@@ -324,12 +403,12 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
       lastUsedGrinderByEquipment, // 使用 Zustand store 的最新状态
       customEquipments
     );
-    
+
     // 如果推荐的是通用磨豆机，直接返回原值
     if (recommendedGrinderId === 'generic') {
       return value;
     }
-    
+
     // 转换为推荐磨豆机的刻度
     const convertedValue = smartConvertGrindSize(
       value,
@@ -337,11 +416,11 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
       recommendedGrinderId,
       settings.customGrinders
     );
-    
+
     // 获取磨豆机名称
     const grinder = findGrinder(recommendedGrinderId, settings.customGrinders, true);
     const grinderName = grinder?.name || '通用';
-    
+
     return `${grinderName} ${convertedValue}`;
   }
 
@@ -388,20 +467,50 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                 <span className="text-xs font-medium w-14">咖啡粉:</span>
                 <span className="text-xs font-medium">{method.params.coffee}</span>
               </div>
-              <div className="flex items-center">
-                <span className="text-xs font-medium w-14">水量:</span>
-                <span className="text-xs font-medium">{method.params.water}</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-xs font-medium w-14">粉水比:</span>
-                <span className="text-xs font-medium">{method.params.ratio}</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-xs font-medium w-14">研磨度:</span>
-                <span className="text-xs font-medium">
-                  {getDisplayGrindSize(method)}
-                </span>
-              </div>
+              {isEspressoEquipment ? (
+                <>
+                  {(() => {
+                    const methodTotalTime = calculateTotalTime(method);
+                    return methodTotalTime > 0 ? (
+                      <div className="flex items-center">
+                        <span className="text-xs font-medium w-14">总时长:</span>
+                        <span className="text-xs font-medium">{formatTimeDisplay(methodTotalTime)}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">水量:</span>
+                    <span className="text-xs font-medium">{method.params.water}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">研磨度:</span>
+                    <span className="text-xs font-medium">
+                      {getDisplayGrindSize(method)}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">水温:</span>
+                    <span className="text-xs font-medium">{method.params.temp}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">水量:</span>
+                    <span className="text-xs font-medium">{method.params.water}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">粉水比:</span>
+                    <span className="text-xs font-medium">{method.params.ratio}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs font-medium w-14">研磨度:</span>
+                    <span className="text-xs font-medium">
+                      {getDisplayGrindSize(method)}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -423,6 +532,23 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                   </div>
                 </div>
 
+                {/* 意式器具显示总时长 - 可编辑 */}
+                {isEspressoEquipment && (
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">总时长:</label>
+                    <div className="flex items-baseline gap-0.5">
+                      <input
+                        type="text"
+                        value={totalTime > 0 ? String(totalTime) : ''}
+                        onChange={(e) => handleTotalTimeChange(e.target.value, method)}
+                        className="w-12 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                        placeholder="25"
+                      />
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500">s</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* 水量 - 可编辑 */}
                 <div className="flex items-center">
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">水量:</label>
@@ -438,20 +564,22 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                   </div>
                 </div>
 
-                {/* 粉水比 */}
-                <div className="flex items-center">
-                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">粉水比:</label>
-                  <div className="flex items-baseline gap-0.5">
-                    <span className="text-xs text-neutral-400 dark:text-neutral-500">1:</span>
-                    <input
-                      type="text"
-                      value={ratioAmount}
-                      onChange={(e) => handleRatioAmountChange(e.target.value, method)}
-                      className="w-10 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
-                      placeholder="15"
-                    />
+                {/* 粉水比 - 手冲才显示 */}
+                {!isEspressoEquipment && (
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">粉水比:</label>
+                    <div className="flex items-baseline gap-0.5">
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500">1:</span>
+                      <input
+                        type="text"
+                        value={ratioAmount}
+                        onChange={(e) => handleRatioAmountChange(e.target.value, method)}
+                        className="w-10 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                        placeholder="15"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* 研磨度 */}
                 <div className="flex items-center">
@@ -464,25 +592,25 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                       const hasMultipleGrinders = !hasOnlyGenericGrinder(settings.myGrinders);
                       return hasMethodGrinder || hasMultipleGrinders;
                     })() && (
-                      <Select value={selectedGrinderId} onValueChange={(value) => handleGrinderChange(value, method)}>
-                        <SelectTrigger 
-                          className="w-auto min-w-[60px] py-1 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs text-neutral-800 dark:text-neutral-100 font-medium"
-                        >
-                          <SelectValue>
-                            {findGrinder(selectedGrinderId, settings?.customGrinders, true)?.name || '通用'}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
-                          {/* 只显示用户添加的磨豆机 */}
-                          {getMyGrinders(settings?.myGrinders || ['generic'], settings?.customGrinders).map((grinder) => (
-                            <SelectItem key={grinder.id} value={grinder.id}>
-                              {grinder.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    
+                        <Select value={selectedGrinderId} onValueChange={(value) => handleGrinderChange(value, method)}>
+                          <SelectTrigger
+                            className="w-auto min-w-[60px] py-1 bg-transparent border-0 border-b border-neutral-200 dark:border-neutral-800 focus-within:border-neutral-400 dark:focus-within:border-neutral-600 shadow-none rounded-none h-auto px-0 text-xs text-neutral-800 dark:text-neutral-100 font-medium"
+                          >
+                            <SelectValue>
+                              {findGrinder(selectedGrinderId, settings?.customGrinders, true)?.name || '通用'}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[40vh] overflow-y-auto border-neutral-200/70 dark:border-neutral-800/70 shadow-lg backdrop-blur-xs bg-white/95 dark:bg-neutral-900/95 rounded-lg">
+                            {/* 只显示用户添加的磨豆机 */}
+                            {getMyGrinders(settings?.myGrinders || ['generic'], settings?.customGrinders).map((grinder) => (
+                              <SelectItem key={grinder.id} value={grinder.id}>
+                                {grinder.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
                     {/* 研磨度输入 */}
                     <input
                       type="text"
@@ -493,6 +621,23 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* 水温 - 意式器具才显示，可编辑 */}
+                {isEspressoEquipment && (
+                  <div className="flex items-center">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 w-14">水温:</label>
+                    <div className="flex items-baseline gap-0.5">
+                      <input
+                        type="text"
+                        value={tempValue}
+                        onChange={(e) => handleTempChange(e.target.value, method)}
+                        className="w-12 py-1 text-xs font-medium text-neutral-800 dark:text-neutral-100 bg-transparent border-b border-neutral-200 dark:border-neutral-800 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 rounded-none"
+                        placeholder="93"
+                      />
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500">°C</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -521,9 +666,9 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({
 
             {/* 没有方案时的提示 */}
             {customMethods.length === 0 && commonMethods.length === 0 && (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 border-l border-neutral-200 dark:border-neutral-800 pl-6">
-                  没有可用的冲煮方案，请前往“冲煮”页面添加
-                </div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 border-l border-neutral-200 dark:border-neutral-800 pl-6">
+                没有可用的冲煮方案，请前往“冲煮”页面添加
+              </div>
             )}
           </div>
         ) : (
