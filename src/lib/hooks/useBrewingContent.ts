@@ -103,13 +103,7 @@ export function useBrewingContent({
 	
 	const initialContent: Content = {
 		咖啡豆: {
-			steps: [
-				{
-					title: "咖啡豆选择",
-					items: ["选择您喜欢的咖啡豆"],
-					note: "正在开发中",
-				},
-			],
+			steps: [],
 		},
 		方案: {
 			steps: [],
