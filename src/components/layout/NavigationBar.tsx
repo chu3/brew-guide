@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { equipmentList, type CustomEquipment } from '@/lib/core/config'
 import hapticsUtils from '@/lib/ui/haptics'
 import { SettingsOptions } from '@/components/settings/Settings'
-import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder, hasOnlyGenericGrinder } from '@/lib/utils/grindUtils'
+import { formatGrindSize, parseGrindSize, getMyGrinders, combineGrindSize, smartConvertGrindSize, findGrinder, hasOnlyGenericGrinder, hasSpecificGrindScale, getGrindScaleUnit } from '@/lib/utils/grindUtils'
 import { getRecommendedGrinder } from '@/lib/utils/grinderRecommendation'
 import { useGrinderRecommendationStore } from '@/lib/stores/grinderRecommendationStore'
 import { BREWING_EVENTS, ParameterInfo } from '@/lib/brewing/constants'
@@ -208,11 +208,13 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
         setSelectedGrinderId(actualGrinderId)
         
         // 🎯 关键：如果使用了推荐的磨豆机（即方案本身没有携带磨豆机ID），需要转化研磨度
-        let finalGrindSize = value || '0'
-        if (!grinderId && actualGrinderId !== 'generic' && value) {
+        // 修复：移除 && value 检查，即使值为空也进行转换（参考 MethodSelector）
+        let finalGrindSize = value || ''
+        if (!grinderId && actualGrinderId !== 'generic') {
             // 将通用研磨度描述转换为推荐磨豆机的刻度
+            // smartConvertGrindSize 会正确处理空值
             finalGrindSize = smartConvertGrindSize(
-                value,
+                value || '',
                 'generic',
                 actualGrinderId,
                 settings.customGrinders
@@ -264,8 +266,8 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
 
     const handleSubmit = useCallback(() => {
         setIsEditing(false)
-        // 即使值为空，也要保留磨豆机信息，使用 "0" 作为默认值
-        const valueToUse = tempValue.trim() || '0'
+        // 🎯 修复：允许空值，不要强制设置为 "0"（参考 MethodSelector）
+        const valueToUse = tempValue.trim()
         const newGrindSize = combineGrindSize(selectedGrinderId, valueToUse)
         if (newGrindSize !== grindSize) {
             onGrindSizeChange(newGrindSize)
@@ -273,9 +275,9 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
     }, [tempValue, grindSize, selectedGrinderId, onGrindSizeChange])
 
     const handleCancel = useCallback(() => {
-        // 🎯 修复：取消时恢复到当前的研磨度值
+        // 🎯 修复：取消时恢复到当前的研磨度值（允许空值）
         const { value } = parseGrindSize(grindSize)
-        setTempValue(value || '0')
+        setTempValue(value || '')
         setIsEditing(false)
     }, [grindSize])
 
@@ -465,12 +467,12 @@ const EditableGrindSize: React.FC<EditableGrindSizeProps> = ({
                         onChange={(e) => setTempValue(e.target.value)}
                         onBlur={handleSubmit}
                         onKeyDown={handleKeyDown}
-                        placeholder="0"
+                        placeholder={settings && hasSpecificGrindScale(selectedGrinderId) ? `8${getGrindScaleUnit(selectedGrinderId)}` : '中细'}
                         className="bg-transparent text-xs outline-hidden whitespace-nowrap overflow-hidden w-full placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
                 ) : (
                     <span className={`whitespace-nowrap text-xs overflow-hidden ${!tempValue ? 'text-neutral-400 dark:text-neutral-600' : ''}`}>
-                        {tempValue || '0'}
+                        {tempValue || (settings && hasSpecificGrindScale(selectedGrinderId) ? `8${getGrindScaleUnit(selectedGrinderId)}` : '中细')}
                     </span>
                 )}
             </span>
@@ -1027,18 +1029,14 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                                                                     unit=""
                                                                     prefix="1:"
                                                                 />
-                                                                {parameterInfo.params?.grindSize && (
-                                                                    <>
-                                                                        <span className="shrink-0">·</span>
-                                                                        <EditableGrindSize
-                                                                            grindSize={displayOverlay?.grindSize || editableParams.grindSize}
-                                                                            onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
-                                                                            settings={settings}
-                                                                            selectedEquipment={selectedEquipment}
-                                                                            customEquipments={customEquipments}
-                                                                        />
-                                                                    </>
-                                                                )}
+                                                                <span className="shrink-0">·</span>
+                                                                <EditableGrindSize
+                                                                    grindSize={displayOverlay?.grindSize || editableParams.grindSize}
+                                                                    onGrindSizeChange={(v) => handleParamChange('grindSize', v)}
+                                                                    settings={settings}
+                                                                    selectedEquipment={selectedEquipment}
+                                                                    customEquipments={customEquipments}
+                                                                />
                                                                 {parameterInfo.params?.temp && (
                                                                     <>
                                                                         <span className="shrink-0">·</span>
