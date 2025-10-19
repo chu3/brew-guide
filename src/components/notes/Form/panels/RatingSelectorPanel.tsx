@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ChevronRight } from 'lucide-react'
 import { CustomFlavorDimensionsManager, FlavorDimension } from '@/lib/managers/customFlavorDimensions'
+import { defaultSettings, SettingsOptions } from '@/components/settings/Settings'
 
 // 滑块样式 - 与 BrewingNoteForm 保持一致
 const SLIDER_STYLES = `relative h-px w-full appearance-none bg-neutral-300 dark:bg-neutral-600 cursor-pointer touch-none
@@ -39,24 +40,36 @@ const RatingSelectorPanel: React.FC<RatingSelectorPanelProps> = ({
     const [currentSliderValue, setCurrentSliderValue] = useState<number | null>(null)
     const [showFlavorRatings, setShowFlavorRatings] = useState(false)
 
-    // 加载风味维度
+    // 加载风味维度和设置
     useEffect(() => {
-        const loadFlavorDimensions = async () => {
+        const loadFlavorDimensionsAndSettings = async () => {
             try {
+                // 加载风味维度
                 const dimensions = await CustomFlavorDimensionsManager.getFlavorDimensions()
                 setFlavorDimensions(dimensions)
+
+                // 加载用户设置
+                const { Storage } = await import('@/lib/core/storage')
+                const settingsStr = await Storage.get('brewGuideSettings')
+                let settings: SettingsOptions = defaultSettings
+                
+                if (settingsStr) {
+                    settings = JSON.parse(settingsStr)
+                }
+
+                // 根据设置决定是否默认展开
+                const shouldExpand = settings.noteSettings?.defaultExpandFlavorRatings ?? false
+                
+                // 如果有风味评分数据，或者设置为默认展开，则展开
+                const hasExistingRatings = Object.values(initialTasteRatings).some(v => v > 0)
+                if (hasExistingRatings || shouldExpand) {
+                    setShowFlavorRatings(true)
+                }
             } catch (error) {
-                console.error('加载风味维度失败:', error)
+                console.error('加载风味维度或设置失败:', error)
             }
         }
-        loadFlavorDimensions()
-    }, [])
-
-    // 如果有风味评分数据，默认展开
-    useEffect(() => {
-        if (Object.keys(initialTasteRatings).length > 0) {
-            setShowFlavorRatings(true)
-        }
+        loadFlavorDimensionsAndSettings()
     }, [initialTasteRatings])
 
     // 通用滑块触摸处理 - 与 BrewingNoteForm 保持一致

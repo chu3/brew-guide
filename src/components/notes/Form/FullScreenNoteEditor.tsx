@@ -103,11 +103,9 @@ const FullScreenNoteEditor: React.FC<FullScreenNoteEditorProps> = ({
 
         try {
             const draftStr = localStorage.getItem('brewingNoteDraft')
-            console.log('📋 加载草稿:', draftStr ? '找到草稿' : '无草稿')
             
             if (draftStr) {
                 const draft = JSON.parse(draftStr)
-                console.log('📋 草稿内容:', draft)
                 
                 // 检查草稿是否真的有内容（排除默认值）
                 const hasRealContent = !!(
@@ -120,11 +118,8 @@ const FullScreenNoteEditor: React.FC<FullScreenNoteEditorProps> = ({
                     (draft.tasteRatings && Object.keys(draft.tasteRatings).some(key => draft.tasteRatings[key] > 0))
                 )
                 
-                console.log('📋 草稿有效性:', hasRealContent)
-                
                 // 只有在草稿有真实内容时才恢复
                 if (hasRealContent) {
-                    console.log('✅ 恢复草稿数据')
                     if (draft.description) setDescription(draft.description)
                     if (draft.image) setImage(draft.image)
                     if (draft.selectedCoffeeBean) setSelectedCoffeeBean(draft.selectedCoffeeBean)
@@ -135,7 +130,6 @@ const FullScreenNoteEditor: React.FC<FullScreenNoteEditorProps> = ({
                     if (draft.brewDate) setBrewDate(new Date(draft.brewDate))
                 } else {
                     // 如果草稿没有真实内容，清除它
-                    console.log('🗑️ 清除无效草稿')
                     localStorage.removeItem('brewingNoteDraft')
                 }
             }
@@ -205,7 +199,7 @@ const FullScreenNoteEditor: React.FC<FullScreenNoteEditorProps> = ({
     const hasFormContent = useCallback(() => {
         const tasteRatingsWithValues = Object.entries(tasteRatings).filter(([_, value]) => value > 0)
         
-        const hasContent = !!(
+        return !!(
             description.trim() ||
             image ||
             selectedCoffeeBean ||
@@ -214,34 +208,12 @@ const FullScreenNoteEditor: React.FC<FullScreenNoteEditorProps> = ({
             rating > 0 ||
             tasteRatingsWithValues.length > 0
         )
-        
-        console.log('📝 表单内容检查:', {
-            hasContent,
-            description: description.trim(),
-            image: !!image,
-            selectedCoffeeBean: !!selectedCoffeeBean,
-            selectedEquipment: !!selectedEquipment,
-            selectedMethod: !!selectedMethod,
-            rating,
-            tasteRatings,
-            tasteRatingsCount: Object.keys(tasteRatings).length,
-            tasteRatingsWithValuesCount: tasteRatingsWithValues.length
-        })
-        
-        return hasContent
     }, [description, image, selectedCoffeeBean, selectedEquipment, selectedMethod, rating, tasteRatings])
 
     // 处理关闭（显示确认对话框或直接关闭）
     const handleClose = useCallback(() => {
-        const hasContent = hasFormContent()
-        console.log('🚪 尝试关闭:', {
-            isEditMode: !!initialData?.id,
-            hasContent,
-            willShowConfirm: !initialData?.id && hasContent
-        })
-        
         // 如果是编辑模式或表单为空，直接关闭
-        if (initialData?.id || !hasContent) {
+        if (initialData?.id || !hasFormContent()) {
             onClose()
         } else {
             // 显示退出确认

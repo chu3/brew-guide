@@ -23,6 +23,7 @@ import NotificationSettings from './NotificationSettings'
 import RandomCoffeeBeanSettings from './RandomCoffeeBeanSettings'
 import SearchSortSettings from './SearchSortSettings'
 import FlavorDimensionSettings from './FlavorDimensionSettings'
+import NoteSettings from './NoteSettings'
 // 自定义磨豆机接口
 export interface CustomGrinder {
     id: string
@@ -107,6 +108,10 @@ export interface SettingsOptions {
     showBeanRating?: boolean // 是否显示咖啡豆评分区域（默认false，只显示有内容的）
     // 详情页显示设置
     showBeanInfoDivider?: boolean // 是否显示基础信息和产地信息之间的分割线（默认true）
+    // 笔记设置
+    noteSettings?: {
+        defaultExpandFlavorRatings: boolean // 是否默认展开风味评分（默认false）
+    }
 }
 
 // 默认设置
@@ -185,7 +190,11 @@ export const defaultSettings: SettingsOptions = {
     // 评分显示设置默认值
     showBeanRating: false, // 默认不显示评分区域（只显示有内容的）
     // 详情页显示设置默认值
-    showBeanInfoDivider: true // 默认显示基础信息和产地信息之间的分割线
+    showBeanInfoDivider: true, // 默认显示基础信息和产地信息之间的分割线
+    // 笔记设置默认值
+    noteSettings: {
+        defaultExpandFlavorRatings: false // 默认不展开风味评分
+    }
 }
 
 interface SettingsProps {
@@ -288,6 +297,9 @@ const Settings: React.FC<SettingsProps> = ({
 
     // 添加风味维度设置状态
     const [showFlavorDimensionSettings, setShowFlavorDimensionSettings] = useState(false)
+
+    // 添加笔记设置状态
+    const [showNoteSettings, setShowNoteSettings] = useState(false)
 
     // 添加二维码显示状态
     const [showQRCodes, setShowQRCodes] = useState(false)
@@ -400,7 +412,7 @@ const Settings: React.FC<SettingsProps> = ({
             const hasSubSettingsOpen = showDisplaySettings || showGrinderSettings || showStockSettings || 
                                       showBeanSettings || showFlavorPeriodSettings || showTimerSettings || 
                                       showDataSettings || showNotificationSettings || showRandomCoffeeBeanSettings || 
-                                      showSearchSortSettings || showFlavorDimensionSettings
+                                      showSearchSortSettings || showFlavorDimensionSettings || showNoteSettings
             
             if (hasSubSettingsOpen) {
                 // 如果有子设置页面打开，关闭它们
@@ -415,6 +427,7 @@ const Settings: React.FC<SettingsProps> = ({
                 setShowRandomCoffeeBeanSettings(false)
                 setShowSearchSortSettings(false)
                 setShowFlavorDimensionSettings(false)
+                setShowNoteSettings(false)
                 // 重新添加主设置的历史记录
                 window.history.pushState({ modal: 'settings' }, '')
             } else {
@@ -430,7 +443,7 @@ const Settings: React.FC<SettingsProps> = ({
         }
     }, [isOpen, onClose, showDisplaySettings, showGrinderSettings, showStockSettings, showBeanSettings, 
         showFlavorPeriodSettings, showTimerSettings, showDataSettings, showNotificationSettings, 
-        showRandomCoffeeBeanSettings, showSearchSortSettings, showFlavorDimensionSettings])
+        showRandomCoffeeBeanSettings, showSearchSortSettings, showFlavorDimensionSettings, showNoteSettings])
 
     // showConfetti 函数已移到 GrinderSettings 组件中
 
@@ -747,6 +760,17 @@ const handleChange = async <K extends keyof SettingsOptions>(
                 {/* 笔记相关设置 */}
                 <div className="px-6 py-4 space-y-4">
                     <button
+                        onClick={() => setShowNoteSettings(true)}
+                        className="w-full py-3 px-4 text-sm font-medium text-neutral-800 bg-neutral-100 rounded transition-colors hover:bg-neutral-200 dark:text-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 flex items-center justify-between"
+                    >
+                        <div className="flex items-center space-x-3">
+                            <ClipboardPen className="h-4 w-4 text-neutral-500" />
+                            <span>笔记设置</span>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-neutral-400" />
+                    </button>
+                    
+                    <button
                         onClick={() => setShowSearchSortSettings(true)}
                         className="w-full py-3 px-4 text-sm font-medium text-neutral-800 bg-neutral-100 rounded transition-colors hover:bg-neutral-200 dark:text-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 flex items-center justify-between"
                     >
@@ -933,6 +957,15 @@ const handleChange = async <K extends keyof SettingsOptions>(
                 <FlavorDimensionSettings
                     settings={settings}
                     onClose={() => setShowFlavorDimensionSettings(false)}
+                    handleChange={handleChange}
+                />
+            )}
+
+            {/* 笔记设置组件 */}
+            {showNoteSettings && (
+                <NoteSettings
+                    settings={settings}
+                    onClose={() => setShowNoteSettings(false)}
                     handleChange={handleChange}
                 />
             )}
