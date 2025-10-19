@@ -934,13 +934,13 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                 <div className="flex items-center gap-2 w-full">
                     {formData.image ? (
                         /* 有图片时：只显示图片 */
-                        <div className="w-16 h-16 rounded bg-neutral-200/40 dark:bg-neutral-800/60 overflow-hidden relative flex-shrink-0">
+                        <div className="w-14 h-14 rounded bg-neutral-200/40 dark:bg-neutral-800/60 overflow-hidden relative flex-shrink-0">
                             <Image
                                 src={formData.image}
                                 alt="笔记图片"
                                 className="object-cover"
                                 fill
-                                sizes="64px"
+                                sizes="56px"
                             />
                             {/* 删除按钮 */}
                             <button
@@ -958,7 +958,7 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                             <button
                                 type="button"
                                 onClick={() => handleImageSelect('camera')}
-                                className="w-16 h-16 rounded bg-neutral-200/40 dark:bg-neutral-800/60 flex items-center justify-center hover:bg-neutral-200/60 dark:hover:bg-neutral-800/80 transition-colors flex-shrink-0"
+                                className="w-14 h-14 rounded bg-neutral-200/40 dark:bg-neutral-800/60 flex items-center justify-center hover:bg-neutral-200/60 dark:hover:bg-neutral-800/80 transition-colors flex-shrink-0"
                                 title="拍照"
                             >
                                 <Camera className="w-5 h-5 text-neutral-300 dark:text-neutral-600" />
@@ -968,7 +968,7 @@ const BrewingNoteForm: React.FC<BrewingNoteFormProps> = ({
                             <button
                                 type="button"
                                 onClick={() => handleImageSelect('gallery')}
-                                className="w-16 h-16 rounded bg-neutral-200/40 dark:bg-neutral-800/60 flex items-center justify-center hover:bg-neutral-200/60 dark:hover:bg-neutral-800/80 transition-colors flex-shrink-0"
+                                className="w-14 h-14 rounded bg-neutral-200/40 dark:bg-neutral-800/60 flex items-center justify-center hover:bg-neutral-200/60 dark:hover:bg-neutral-800/80 transition-colors flex-shrink-0"
                                 title="相册"
                             >
                                 <ImageIcon className="w-5 h-5 text-neutral-300 dark:text-neutral-600" />

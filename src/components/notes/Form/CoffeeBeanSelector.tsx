@@ -148,6 +148,9 @@ const CoffeeBeanSelector: React.FC<CoffeeBeanSelectorProps> = ({
             <Virtuoso
               {...(scrollParentRef ? { customScrollParent: scrollParentRef } : { useWindowScroll: true })}
               data={virtuosoData}
+              overscan={500}
+              increaseViewportBy={{ top: 300, bottom: 300 }}
+              defaultItemHeight={70}
               components={(() => {
                 const ListCmp = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, children, ...props }, ref) => (
                   <div ref={ref} style={style} {...props}>

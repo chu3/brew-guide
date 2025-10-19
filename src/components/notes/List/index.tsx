@@ -635,7 +635,7 @@ const BrewingHistory: React.FC<BrewingHistoryProps> = ({
                 roastLevel: ''
             },
             image: convertedNote.image,
-            rating: convertedNote.rating || 3,
+            rating: convertedNote.rating || 0,
             taste: convertedNote.taste || {
                 acidity: 0,
                 sweetness: 0,

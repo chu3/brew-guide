@@ -30,7 +30,7 @@ import hapticsUtils from '@/lib/ui/haptics'
 import { BREWING_EVENTS } from '@/lib/brewing/constants'
 import type { BrewingNoteData } from '@/types/app'
 import { updateParameterInfo } from '@/lib/brewing/parameters'
-import BrewingNoteFormModal from '@/components/notes/Form/BrewingNoteFormModal'
+import FullScreenNoteEditor from '@/components/notes/Form/FullScreenNoteEditor'
 import CoffeeBeans from '@/components/coffee-bean/List'
 import { loadCustomEquipments, saveCustomEquipment, deleteCustomEquipment } from '@/lib/managers/customEquipments'
 import CustomEquipmentFormModal from '@/components/equipment/forms/CustomEquipmentFormModal'
@@ -1542,7 +1542,7 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 bitterness: 0,
                 body: 0
             },
-            rating: 3,
+            rating: 0,
             notes: ''
         });
         setShowNoteFormModal(true);
@@ -2213,16 +2213,14 @@ const PourOverRecipes = ({ initialHasBeans }: { initialHasBeans: boolean }) => {
                 onClose={() => setShowImportBeanForm(false)}
             />
 
-            <BrewingNoteFormModal
-                key="note-form-modal"
-                showForm={showNoteFormModal}
-                initialNote={currentEditingNote}
+            <FullScreenNoteEditor
+                isOpen={showNoteFormModal}
+                initialData={currentEditingNote}
                 onSave={handleSaveBrewingNote}
                 onClose={() => {
                     setShowNoteFormModal(false);
                     setCurrentEditingNote({});
                 }}
-                settings={settings}
             />
 
             <Settings

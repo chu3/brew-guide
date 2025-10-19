@@ -43,9 +43,13 @@ const NoteItem: React.FC<NoteItemProps> = ({
     const validTasteRatings = getValidTasteRatings(note.taste);
     const hasTasteRatings = validTasteRatings.length > 0;
     const hasNotes = Boolean(note.notes);
-    const equipmentName = (note.equipment && note.equipment.trim() !== '') ? (equipmentNames[note.equipment] || note.equipment) : '未知器具';
+    const equipmentName = (note.equipment && note.equipment.trim() !== '') ? (equipmentNames[note.equipment] || note.equipment) : '';
     const beanName = note.coffeeBeanInfo?.name;
     const beanUnitPrice = beanName ? (unitPriceCache[beanName] || 0) : 0;
+    const hasMethodParams = note.params && note.method && note.method.trim() !== '';
+    const hasRating = note.rating > 0;
+    // 判断是否是简单笔记（没有图片、没有方案、没有评分、没有风味评分、没有咖啡豆、没有器具）
+    const isSimpleNote = !note.image && !hasMethodParams && !hasRating && !hasTasteRatings && !beanName && !equipmentName;
 
     // 获取用户设置
     useEffect(() => {
@@ -156,8 +160,8 @@ const NoteItem: React.FC<NoteItemProps> = ({
                                     ) : (
                                         // 没有方案时的显示逻辑：合并咖啡豆和器具信息
                                         beanName ? (
-                                            beanName === equipmentName ? (
-                                                // 如果咖啡豆名称和器具名称相同，只显示一个
+                                            beanName === equipmentName || !equipmentName ? (
+                                                // 如果咖啡豆名称和器具名称相同，或器具为空，只显示咖啡豆
                                                 beanName
                                             ) : (
                                                 // 显示咖啡豆和器具，用分割符连接
@@ -168,7 +172,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
                                                 </>
                                             )
                                         ) : (
-                                            // 只有器具信息
+                                            // 只有器具信息（器具为空时不显示）
                                             equipmentName
                                         )
                                     )}
@@ -177,7 +181,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
                                 {/* 方案信息 - 只在有方案时显示 */}
                                 {note.params && note.method && note.method.trim() !== '' && (
                                     <div className="text-xs font-medium mt-1.5 tracking-wide text-neutral-600 dark:text-neutral-400 space-x-1 leading-relaxed">
-                                        {beanName && (
+                                        {beanName && equipmentName && (
                                             <>
                                                 <span>{equipmentName}</span>
                                                 <span>·</span>
@@ -229,50 +233,103 @@ const NoteItem: React.FC<NoteItemProps> = ({
                                     </div>
                                 )}
                             </div>
-                            <div className="shrink-0 ml-1 relative h-[16.5px]">
-                                {isShareMode ? (
-                                    <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                            e.stopPropagation();
-                                            if (onToggleSelect) onToggleSelect(note.id);
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="appearance-none h-4 w-4 rounded-sm border border-neutral-300 dark:border-neutral-700 checked:bg-neutral-800 dark:checked:bg-neutral-200 relative checked:after:absolute checked:after:left-1/2 checked:after:top-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:content-['✓'] checked:after:text-white dark:checked:after:text-black text-xs"
-                                    />
-                                ) : (
-                                    <ActionMenu
-                                        items={[
-                                            {
-                                                id: 'edit',
-                                                label: '编辑',
-                                                onClick: () => onEdit(note)
-                                            },
-                                            {
-                                                id: 'copy',
-                                                label: '复制',
-                                                onClick: () => onCopy?.(note.id)
-                                            },
-                                            {
-                                                id: 'delete',
-                                                label: '删除',
-                                                onClick: () => onDelete(note.id),
-                                                color: 'danger'
-                                            },
-                                            {
-                                                id: 'share',
-                                                label: '分享',
-                                                onClick: () => {
-                                                    if (onToggleSelect) {
-                                                        onToggleSelect(note.id, true);
+                            {/* 简单笔记时，日期和操作菜单在同一行 */}
+                            {isSimpleNote ? (
+                                <div className="flex items-center justify-between gap-2 w-full">
+                                    <div className="text-xs font-medium tracking-wide text-neutral-600 dark:text-neutral-400">
+                                        {formatDate(note.timestamp)}
+                                    </div>
+                                    <div className="shrink-0 relative h-[16.5px]">
+                                        {isShareMode ? (
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onToggleSelect) onToggleSelect(note.id);
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="appearance-none h-4 w-4 rounded-sm border border-neutral-300 dark:border-neutral-700 checked:bg-neutral-800 dark:checked:bg-neutral-200 relative checked:after:absolute checked:after:left-1/2 checked:after:top-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:content-['✓'] checked:after:text-white dark:checked:after:text-black text-xs"
+                                            />
+                                        ) : (
+                                            <ActionMenu
+                                                items={[
+                                                    {
+                                                        id: 'edit',
+                                                        label: '编辑',
+                                                        onClick: () => onEdit(note)
+                                                    },
+                                                    {
+                                                        id: 'copy',
+                                                        label: '复制',
+                                                        onClick: () => onCopy?.(note.id)
+                                                    },
+                                                    {
+                                                        id: 'delete',
+                                                        label: '删除',
+                                                        onClick: () => onDelete(note.id),
+                                                        color: 'danger'
+                                                    },
+                                                    {
+                                                        id: 'share',
+                                                        label: '分享',
+                                                        onClick: () => {
+                                                            if (onToggleSelect) {
+                                                                onToggleSelect(note.id, true);
+                                                            }
+                                                        }
+                                                    }
+                                                ]}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="shrink-0 ml-1 relative h-[16.5px]">
+                                    {isShareMode ? (
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                if (onToggleSelect) onToggleSelect(note.id);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="appearance-none h-4 w-4 rounded-sm border border-neutral-300 dark:border-neutral-700 checked:bg-neutral-800 dark:checked:bg-neutral-200 relative checked:after:absolute checked:after:left-1/2 checked:after:top-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:content-['✓'] checked:after:text-white dark:checked:after:text-black text-xs"
+                                        />
+                                    ) : (
+                                        <ActionMenu
+                                            items={[
+                                                {
+                                                    id: 'edit',
+                                                    label: '编辑',
+                                                    onClick: () => onEdit(note)
+                                                },
+                                                {
+                                                    id: 'copy',
+                                                    label: '复制',
+                                                    onClick: () => onCopy?.(note.id)
+                                                },
+                                                {
+                                                    id: 'delete',
+                                                    label: '删除',
+                                                    onClick: () => onDelete(note.id),
+                                                    color: 'danger'
+                                                },
+                                                {
+                                                    id: 'share',
+                                                    label: '分享',
+                                                    onClick: () => {
+                                                        if (onToggleSelect) {
+                                                            onToggleSelect(note.id, true);
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        ]}
-                                    />
-                                )}
-                            </div>
+                                            ]}
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -302,14 +359,18 @@ const NoteItem: React.FC<NoteItemProps> = ({
                 ) : null}
 
                 {/* 时间和评分 */}
-                <div className="flex items-baseline justify-between">
-                    <div className="text-xs font-medium tracking-wide text-neutral-600 dark:text-neutral-400">
-                        {formatDate(note.timestamp)}
+                {!isSimpleNote && (
+                    <div className="flex items-baseline justify-between">
+                        <div className="text-xs font-medium tracking-wide text-neutral-600 dark:text-neutral-400">
+                            {formatDate(note.timestamp)}
+                        </div>
+                        {note.rating > 0 && (
+                            <div className="text-xs font-medium tracking-wide text-neutral-600 dark:text-neutral-400">
+                                {isShareMode ? `总体评分 ${formatRating(note.rating)}` : formatRating(note.rating)}
+                            </div>
+                        )}
                     </div>
-                    <div className="text-xs font-medium tracking-wide text-neutral-600 dark:text-neutral-400">
-                        {isShareMode ? `总体评分 ${formatRating(note.rating)}` : formatRating(note.rating)}
-                    </div>
-                </div>
+                )}
 
                 {/* 备注信息 */}
                 {hasNotes && (
